@@ -87,6 +87,8 @@ alter table public.other_income add column if not exists updated_at timestamptz 
 create index if not exists orders_user_order_date_idx on public.orders (user_id, order_date desc);
 create index if not exists orders_user_service_date_idx on public.orders (user_id, service_date desc);
 create index if not exists other_income_user_date_idx on public.other_income (user_id, income_date desc);
+create unique index if not exists orders_user_id_id_key on public.orders (user_id, id);
+create unique index if not exists other_income_user_id_id_key on public.other_income (user_id, id);
 
 alter table public.orders enable row level security;
 alter table public.other_income enable row level security;
