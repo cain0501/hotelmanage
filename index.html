@@ -107,10 +107,30 @@
       .mobile-order-meta{padding:9px 0;border-top:1px solid #f0ebe1;border-bottom:1px solid #f0ebe1;color:#6f6b64;font-size:11px}
       .mobile-order-meta span{min-width:0;overflow-wrap:anywhere}.mobile-order-meta b{display:block;color:#143b36;font-weight:500;margin-top:3px}
       .mobile-order-money{padding-top:10px}.mobile-order-money strong{font:600 15px "DM Mono",monospace}.mobile-order-money small{display:block;color:#8c867d;font-size:10px;margin-top:3px}
+      .auth-shell{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 15% 10%,#e8dfce 0,#f5f1e8 42%,#e9eee7 100%)}
+      .auth-card{width:min(440px,100%);padding:34px;background:#fffdf8;border:1px solid #ded7c7;border-radius:10px;box-shadow:0 24px 70px rgba(20,59,54,.12)}
+      .auth-card h1{margin:0;color:#143b36;font:700 29px "Noto Serif SC",serif}.auth-lead{color:#77766f;font-size:13px;line-height:1.7;margin:12px 0 23px}.auth-card form{display:grid;gap:14px}.auth-card label{display:grid;gap:6px;color:#716d65;font-size:12px}.auth-card input{width:100%}.auth-card #authSubmit{width:100%;margin-top:4px}.auth-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:15px}.auth-actions .text-button{padding:0}.auth-note{color:#989187;font-size:11px;line-height:1.6;margin:16px 0 0}.auth-status-error{color:#a84d3e!important}.auth-status-success{color:#267255!important}.sidebar-action{display:block;color:#d6e0db;text-align:left;margin-top:10px;padding:0;font-size:11px}.sidebar-action:hover{color:#fff}.sidebar-note #currentUserEmail{display:block;margin-top:4px;overflow-wrap:anywhere;color:#afc0b9}.syncing{color:#d6aa63!important}.synced{color:#8ec9aa!important}.sync-error{color:#f0a698!important}
+      [hidden]{display:none!important}
+      @media(max-width:650px){.auth-card{padding:26px 21px}.auth-actions{align-items:flex-start;flex-direction:column}}
     </style>
   </head>
   <body>
-    <div class="app-shell">
+    <section class="auth-shell" id="authShell">
+      <div class="auth-card">
+        <p class="eyebrow">HOTEL & FLIGHT · CLOUD LEDGER</p>
+        <h1>栖账云端登录</h1>
+        <p class="auth-lead">登录后，订单、收款、开票和其它收入会保存在 Supabase，电脑与手机使用同一份数据。</p>
+        <form id="authForm">
+          <label>邮箱<input id="authEmail" type="email" autocomplete="email" required placeholder="输入登录邮箱" /></label>
+          <label>密码<input id="authPassword" type="password" autocomplete="current-password" minlength="6" required placeholder="至少 6 位密码" /></label>
+          <button class="button primary" id="authSubmit" type="submit">登录</button>
+        </form>
+        <div class="auth-actions"><button class="text-button" id="authSignUp" type="button">没有账号？注册</button><span id="authStatus" role="status"></span></div>
+        <p class="auth-note">首次使用：先在这里注册，若项目开启邮箱验证，请先点击邮件中的确认链接。</p>
+      </div>
+    </section>
+
+    <div class="app-shell" id="appShell" hidden>
       <aside class="sidebar">
         <a class="brand" href="#dashboard" aria-label="栖账首页">
           <span class="brand-mark">栖</span>
@@ -126,7 +146,10 @@
         <div class="sidebar-note">
           <span class="pulse"></span>
           <p>本地原型</p>
-          <small>数据仅保存在当前浏览器</small>
+          <small id="cloudStatus">云端同步准备中</small>
+          <small id="currentUserEmail"></small>
+          <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
+          <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
       </aside>
 
@@ -314,6 +337,7 @@
     </style>
 
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="app.js"></script>
   </body>

@@ -17,10 +17,11 @@ const seedOrders = [
   { id:'HT-20260921-008', type:'hotel', customer:'沈先生', booker:'域见', serviceDate:'2026-10-15', location:'深圳', supplier:'罗湖木棉花酒店', product:'行政套房', rooms:1, nights:1, tickets:0, confirmation:'SZ1145', gmv:830, cost:0, received:830, status:'confirmed', issues:['成本金额为 0'] }
 ];
 
-let orders = JSON.parse(localStorage.getItem('qizhang-orders') || 'null') || seedOrders;
 const looksLikeBrokenImport = rows => Array.isArray(rows) && rows.length >= 3 && rows.filter(row => row && row.customer === '待补客户' && row.supplier === '待确认' && Number(row.gmv) === 0).length >= 3;
-if (looksLikeBrokenImport(orders)) { orders = []; localStorage.removeItem('qizhang-orders'); }
-orders.forEach((order,index)=>{if(!order.orderCode)order.orderCode=`ORD-${String(index+1).padStart(5,'0')}`;});
+const storedOrders = JSON.parse(localStorage.getItem('qizhang-orders') || 'null');
+const localOrders = Array.isArray(storedOrders) && !looksLikeBrokenImport(storedOrders) ? storedOrders : [];
+localOrders.forEach((order,index)=>{if(!order.orderCode)order.orderCode=`ORD-${String(index+1).padStart(5,'0')}`;});
+let orders = [];
 let activeType = 'all';
 const ORDER_PAGE_SIZE = 50;
 let orderPage = 1;
@@ -37,11 +38,36 @@ let paymentFilter = 'all';
 let invoiceFilter = 'all';
 let locationFilter = '';
 let supplierFilter = '';
-let otherIncomes = JSON.parse(localStorage.getItem('qizhang-other-income') || '[]');
+const localOtherIncomes = JSON.parse(localStorage.getItem('qizhang-other-income') || '[]');
+let otherIncomes = [];
 
 const byId = id => document.getElementById(id);
-const save = () => localStorage.setItem('qizhang-orders', JSON.stringify(orders));
-const saveOtherIncomes = () => localStorage.setItem('qizhang-other-income', JSON.stringify(otherIncomes));
+const SUPABASE_URL = 'https://onomizgpzhqrmiuqeikf.supabase.co';
+// Publishable key 只能用于浏览器端，RLS 才是数据安全边界；不要替换成 service_role key。
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_PfLkfwLJTSGCIchlm3_xiQ_LuLj_JOC';
+const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+let currentUser = null;
+let realtimeChannel = null;
+let cloudReady = false;
+let cloudBusy = false;
+const saveLocalOrders = () => localStorage.setItem('qizhang-orders', JSON.stringify(orders));
+const saveLocalOtherIncomes = () => localStorage.setItem('qizhang-other-income', JSON.stringify(otherIncomes));
+const save = async () => {
+  saveLocalOrders();
+  if (!cloudReady || !currentUser) return;
+  setSyncStatus('正在同步订单…', 'syncing');
+  const { error } = await supabaseClient.from('orders').upsert(orders.map(orderToRow), { onConflict: 'user_id,id' });
+  if (error) { setSyncStatus(`同步失败：${error.message}`, 'sync-error'); throw error; }
+  setSyncStatus('已同步到云端', 'synced');
+};
+const saveOtherIncomes = async () => {
+  saveLocalOtherIncomes();
+  if (!cloudReady || !currentUser) return;
+  setSyncStatus('正在同步其它收入…', 'syncing');
+  const { error } = await supabaseClient.from('other_income').upsert(otherIncomes.map(otherIncomeToRow), { onConflict: 'user_id,id' });
+  if (error) { setSyncStatus(`同步失败：${error.message}`, 'sync-error'); throw error; }
+  setSyncStatus('已同步到云端', 'synced');
+};
 const orderCode = order => order.orderCode || order.id;
 const profit = order => order.profitOverride !== null && order.profitOverride !== undefined ? Number(order.profitOverride) : Number(order.gmv) - Number(order.cost);
 const roomNights = order => order.type === 'hotel' ? Number(order.rooms || 1) * Number(order.nights || 0) : 0;
@@ -51,6 +77,96 @@ const invoiceStatus = order => order.invoiceStatus || (order.invoiceCompany ? 'i
 const invoiceText = order => invoiceStatus(order) === 'issued' ? '已开票' : '未开票';
 const statusText = order => ({ booked:'预订中', confirming:'确认中', confirmed:'已确认', cancelled:'已取消', pending:'待出票', ticketed:'已出票', refunded:'已退票' })[order.status] || '待确认';
 const typeName = order => order.type === 'hotel' ? '酒店' : '机票';
+const emptyToNull = value => value === '' || value === undefined ? null : value;
+const asNumber = value => Number.isFinite(Number(value)) ? Number(value) : 0;
+const orderToRow = order => ({
+  id: order.id, user_id: currentUser?.id, order_code: orderCode(order), type: order.type,
+  customer: order.customer || '', booker: order.booker || '', order_date: emptyToNull(order.orderDate), service_date: emptyToNull(order.serviceDate),
+  location: order.location || '', supplier: order.supplier || '', product: order.product || '', rooms: asNumber(order.rooms), nights: asNumber(order.nights), tickets: asNumber(order.tickets),
+  confirmation: order.confirmation || '', gmv: asNumber(order.gmv), cost: asNumber(order.cost), received: asNumber(order.received), payment_status: payment(order),
+  payment_platform: order.paymentPlatform || '', invoice_status: invoiceStatus(order), invoice_company: order.invoiceCompany || '', profit_override: emptyToNull(order.profitOverride),
+  status: order.status || 'booked', issues: Array.isArray(order.issues) ? order.issues : []
+});
+const rowToOrder = row => ({
+  id: row.id, orderCode: row.order_code || row.id, type: row.type || 'hotel', customer: row.customer || '', booker: row.booker || '', orderDate: row.order_date || '', serviceDate: row.service_date || '',
+  location: row.location || '', supplier: row.supplier || '', product: row.product || '', rooms: asNumber(row.rooms), nights: asNumber(row.nights), tickets: asNumber(row.tickets), confirmation: row.confirmation || '',
+  gmv: asNumber(row.gmv), cost: asNumber(row.cost), received: asNumber(row.received), paymentStatus: row.payment_status || 'paid', paymentPlatform: row.payment_platform || '',
+  invoiceStatus: row.invoice_status || 'unissued', invoiceCompany: row.invoice_company || '', profitOverride: row.profit_override === null || row.profit_override === undefined ? null : asNumber(row.profit_override),
+  status: row.status || 'booked', issues: Array.isArray(row.issues) ? row.issues : []
+});
+const otherIncomeToRow = item => ({ id: item.id, user_id: currentUser?.id, income_date: emptyToNull(item.date) || today, name: item.name || '', order_id: item.orderId || null, amount: asNumber(item.amount), expense: asNumber(item.expense) });
+const rowToOtherIncome = row => ({ id: row.id, date: row.income_date || '', name: row.name || '', orderId: row.order_id || '', amount: asNumber(row.amount), expense: asNumber(row.expense) });
+function setSyncStatus(message, state='') { const element=byId('cloudStatus'); if(!element)return; element.textContent=message; element.className=state; }
+function setAuthStatus(message, state='') { const element=byId('authStatus'); if(!element)return; element.textContent=message; element.className=state ? `auth-status-${state}` : ''; }
+function showAuthenticatedUI(isAuthenticated) { byId('authShell').hidden=isAuthenticated; byId('appShell').hidden=!isAuthenticated; }
+async function loadCloudData({ allowMigration=true, silent=false }={}) {
+  if (!currentUser || !supabaseClient) return;
+  const [ordersResult, incomesResult] = await Promise.all([
+    supabaseClient.from('orders').select('*').order('order_date', { ascending: false }),
+    supabaseClient.from('other_income').select('*').order('income_date', { ascending: false })
+  ]);
+  if (ordersResult.error) throw ordersResult.error;
+  if (incomesResult.error) throw incomesResult.error;
+  orders = (ordersResult.data || []).map(rowToOrder);
+  otherIncomes = (incomesResult.data || []).map(rowToOtherIncome);
+  cloudReady = true;
+  saveLocalOrders(); saveLocalOtherIncomes();
+  setSyncStatus(`云端数据 · ${orders.length} 笔订单`, 'synced');
+  renderAll();
+  if (allowMigration && !orders.length && !otherIncomes.length && localOrders.length) {
+    const shouldMigrate = window.confirm(`云端暂时没有数据，发现本地浏览器中有 ${localOrders.length} 笔订单。是否上传到云端？\n\n不会自动上传示例数据。`);
+    if (shouldMigrate) await migrateLocalData();
+  }
+  if (!silent) setAuthStatus('已连接云端', 'success');
+}
+async function migrateLocalData() {
+  if (!currentUser || !supabaseClient) return;
+  if (!localOrders.length && !localOtherIncomes.length) { window.alert('当前浏览器没有可上传的本地数据。'); return; }
+  if (!window.confirm(`确认上传本地数据？\n订单：${localOrders.length} 笔\n其它收入：${localOtherIncomes.length} 笔\n\n云端已有同编号记录会更新，不同编号记录会保留。`)) return;
+  cloudBusy = true; setSyncStatus('正在上传本地数据…', 'syncing');
+  try {
+    if (localOrders.length) { orders = localOrders.map(order => ({ ...order })); const { error } = await supabaseClient.from('orders').upsert(orders.map(orderToRow), { onConflict: 'user_id,id' }); if (error) throw error; }
+    if (localOtherIncomes.length) { otherIncomes = localOtherIncomes.map(item => ({ ...item })); const { error } = await supabaseClient.from('other_income').upsert(otherIncomes.map(otherIncomeToRow), { onConflict: 'user_id,id' }); if (error) throw error; }
+    await loadCloudData({ allowMigration:false });
+    window.alert('本地数据已上传到云端。');
+  } catch (error) { setSyncStatus(`上传失败：${error.message}`, 'sync-error'); window.alert(`上传失败：${error.message}`); }
+  finally { cloudBusy=false; }
+}
+async function setupRealtime() {
+  if (!supabaseClient || !currentUser) return;
+  if (realtimeChannel) await supabaseClient.removeChannel(realtimeChannel);
+  realtimeChannel = supabaseClient.channel(`ledger-sync-${currentUser.id}`)
+    .on('postgres_changes', { event:'*', schema:'public', table:'orders', filter:`user_id=eq.${currentUser.id}` }, () => loadCloudData({ allowMigration:false, silent:true }).catch(error => setSyncStatus(`实时同步失败：${error.message}`, 'sync-error')))
+    .on('postgres_changes', { event:'*', schema:'public', table:'other_income', filter:`user_id=eq.${currentUser.id}` }, () => loadCloudData({ allowMigration:false, silent:true }).catch(error => setSyncStatus(`实时同步失败：${error.message}`, 'sync-error')))
+    .subscribe();
+}
+async function handleSession(session) {
+  currentUser = session?.user || null;
+  if (!currentUser) {
+    cloudReady=false; orders=[]; otherIncomes=[]; showAuthenticatedUI(false); setAuthStatus('');
+    if (realtimeChannel && supabaseClient) { await supabaseClient.removeChannel(realtimeChannel); realtimeChannel=null; }
+    return;
+  }
+  showAuthenticatedUI(true); byId('currentUserEmail').textContent=currentUser.email || ''; setSyncStatus('正在读取云端数据…', 'syncing');
+  try { await loadCloudData(); await setupRealtime(); } catch (error) { cloudReady=false; setSyncStatus(`云端连接失败：${error.message}`, 'sync-error'); window.alert(`云端数据库还未准备好或连接失败：${error.message}\n\n请先在 Supabase SQL Editor 执行项目里的 supabase-schema.sql。`); renderAll(); }
+}
+async function signIn() {
+  if (!supabaseClient) { setAuthStatus('Supabase 客户端未加载，请检查网络后刷新。', 'error'); return; }
+  const email=byId('authEmail').value.trim(), password=byId('authPassword').value;
+  setAuthStatus('正在登录…'); byId('authSubmit').disabled=true;
+  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  byId('authSubmit').disabled=false;
+  if (error) setAuthStatus(error.message, 'error');
+}
+async function signUp() {
+  if (!supabaseClient) { setAuthStatus('Supabase 客户端未加载，请检查网络后刷新。', 'error'); return; }
+  const email=byId('authEmail').value.trim(), password=byId('authPassword').value;
+  if (!email || password.length < 6) { setAuthStatus('请先填写邮箱和至少 6 位密码。', 'error'); return; }
+  setAuthStatus('正在注册…');
+  const { data, error } = await supabaseClient.auth.signUp({ email, password });
+  if (error) setAuthStatus(error.message, 'error'); else if (!data.session) setAuthStatus('注册成功，请查收邮箱并完成验证后再登录。', 'success'); else setAuthStatus('注册成功，正在进入系统…', 'success');
+}
+async function signOut() { if (supabaseClient) await supabaseClient.auth.signOut(); }
 const issueEntries = () => orders.flatMap(order => {
   if (payment(order) === 'refunded' || ['cancelled', 'refunded'].includes(order.status)) return [];
   const issues = [...(order.issues || [])];
@@ -161,7 +277,7 @@ async function importExcel(file){if(!window.XLSX){window.alert('Excel 解析组�
 async function importExcelFixed(file){if(!window.XLSX){window.alert('Excel 解析组件未加载，请检查网络后刷新重试。');return;}const button=byId('importExcel');button.textContent='正在导入…';button.disabled=true;try{const workbook=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true});const sheet=workbook.Sheets[workbook.SheetNames[0]];const matrix=XLSX.utils.sheet_to_json(sheet,{header:1,defval:null,raw:true});const imported=matrix.slice(1).filter(row=>Array.isArray(row)&&row.some(value=>value!==null&&value!=='')) .map(mapExcelRow).filter(order=>order.orderDate||order.serviceDate||order.supplier!=='待确认'||order.gmv!==0);if(imported.length<10||!imported.some(order=>order.supplier!=='待确认'&&order.gmv>0))throw new Error('没有识别到“酒店销售”订单数据，请确认选择的是导出的订单汇总文件。');orders=imported;save();renderAll();showView('orders');byId('importStatus').textContent=`已导入 ${imported.length} 笔订单 · 来源：${file.name} · 真实数据已替换本地示例`;byId('importStatus').classList.add('success');window.alert(`已成功导入 ${imported.length} 笔真实订单。`);}catch(error){byId('importStatus').textContent=`导入失败：${error.message}`;byId('importStatus').classList.remove('success');window.alert(`导入失败：${error.message}`);}finally{button.textContent='导入 Excel';button.disabled=false;byId('excelFile').value='';}}
 function openEditOrder(id){const o=orders.find(order=>order.id===id);if(!o)return;byId('detailDialog').close();byId('orderForm').dataset.editId=id;byId('formKicker').textContent=`EDIT ORDER · ${id}`;byId('formHeading').textContent='编辑订单';byId('formSubmit').textContent='保存修改';setOrderType(o.type);byId('orderStatus').value=o.status|| (o.type==='hotel'?'booked':'pending');byId('customer').value=o.customer||'';byId('booker').value=o.booker||'';byId('orderDate').value=o.orderDate||o.serviceDate||today;byId('serviceDate').value=o.serviceDate||today;byId('confirmation').value=o.confirmation||'';byId('location').value=o.location||'';byId('supplier').value=o.supplier||'';byId('product').value=o.product||'';byId('rooms').value=o.rooms||1;byId('nights').value=o.nights||1;byId('tickets').value=o.tickets||1;byId('gmv').value=o.gmv||0;byId('cost').value=o.cost||0;byId('paymentStatus').value=payment(o);byId('paymentPlatform').value=o.paymentPlatform||'';byId('received').value=o.received||0;byId('invoiceStatus').value=invoiceStatus(o);byId('invoiceCompany').value=o.invoiceCompany||'';refreshFormPreview();byId('orderDialog').showModal();}
 
-document.addEventListener('click', event=>{const nav=event.target.closest('[data-view]');if(nav)showView(nav.dataset.view);const go=event.target.closest('[data-go]');if(go)showView(go.dataset.go);const detail=event.target.closest('[data-detail]');if(detail)openDetails(detail.dataset.detail);const close=event.target.closest('[data-close]');if(close)byId(close.dataset.close).close();const page=event.target.closest('[data-order-page]');if(page&&!page.disabled){orderPage=Number(page.dataset.orderPage);renderOrders();}const type=event.target.closest('[data-order-type]');if(type)setOrderType(type.dataset.orderType);const filter=event.target.closest('[data-type-filter]');if(filter){activeType=filter.dataset.typeFilter;orderPage=1;document.querySelectorAll('[data-type-filter]').forEach(b=>b.classList.toggle('selected',b===filter));renderOrders();}const calcTrigger=event.target.closest('[data-calc-for]');if(calcTrigger)openCalculator(calcTrigger.dataset.calcFor);const calcKey=event.target.closest('[data-calc-key]');if(calcKey){const input=byId('calcExpression'),key=calcKey.dataset.calcKey;if(key==='C')input.value='';else if(key==='⌫')input.value=input.value.slice(0,-1);else input.value+=key;byId('calcHint').textContent='支持 + − × ÷ 和括号';byId('calcHint').classList.remove('error');}if(event.target.id==='calcEquals')calculateAndPreview();if(event.target.id==='applyCalculation'){const result=calculateAndPreview();if(result!==null&&calculatorTarget){byId(calculatorTarget).value=String(result);refreshFormPreview();byId('calculatorDialog').close();}}if(event.target.id==='clearFilters'){activeType='all';searchTerm='';orderPage=1;byId('orderSearch').value='';document.querySelectorAll('[data-type-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.typeFilter==='all'));renderOrders();}if(event.target.id==='importExcel')byId('excelFile').click();if(event.target.id==='openOrderDialog'){byId('orderForm').reset();delete byId('orderForm').dataset.editId;byId('formKicker').textContent='NEW TRANSACTION';byId('formHeading').textContent='新增业务订单';byId('formSubmit').textContent='保存订单';byId('orderDate').value=today;byId('serviceDate').value=today;byId('paymentStatus').value='paid';setOrderType('hotel');byId('orderStatus').value='booked';byId('orderDialog').showModal();}if(event.target.id==='editOrder')openEditOrder(event.target.dataset.id);if(event.target.id==='addPayment'){const order=orders.find(o=>o.id===event.target.dataset.id);const outstanding=order.gmv-order.received;const value=window.prompt(`登记收款（当前待收 ${compactCurrency(outstanding)}）`,outstanding);if(value!==null&&!Number.isNaN(Number(value))){order.received=Math.min(order.gmv,order.received+Number(value));order.paymentStatus=order.received>=order.gmv?'paid':'partial';save();renderAll();openDetails(order.id);}}});
+document.addEventListener('click', event=>{const nav=event.target.closest('[data-view]');if(nav)showView(nav.dataset.view);const go=event.target.closest('[data-go]');if(go)showView(go.dataset.go);const detail=event.target.closest('[data-detail]');if(detail)openDetails(detail.dataset.detail);const close=event.target.closest('[data-close]');if(close)byId(close.dataset.close).close();const page=event.target.closest('[data-order-page]');if(page&&!page.disabled){orderPage=Number(page.dataset.orderPage);renderOrders();}const type=event.target.closest('[data-order-type]');if(type)setOrderType(type.dataset.orderType);const filter=event.target.closest('[data-type-filter]');if(filter){activeType=filter.dataset.typeFilter;orderPage=1;document.querySelectorAll('[data-type-filter]').forEach(b=>b.classList.toggle('selected',b===filter));renderOrders();}const calcTrigger=event.target.closest('[data-calc-for]');if(calcTrigger)openCalculator(calcTrigger.dataset.calcFor);const calcKey=event.target.closest('[data-calc-key]');if(calcKey){const input=byId('calcExpression'),key=calcKey.dataset.calcKey;if(key==='C')input.value='';else if(key==='⌫')input.value=input.value.slice(0,-1);else input.value+=key;byId('calcHint').textContent='支持 + − × ÷ 和括号';byId('calcHint').classList.remove('error');}if(event.target.id==='calcEquals')calculateAndPreview();if(event.target.id==='applyCalculation'){const result=calculateAndPreview();if(result!==null&&calculatorTarget){byId(calculatorTarget).value=String(result);refreshFormPreview();byId('calculatorDialog').close();}}if(event.target.id==='clearFilters'){activeType='all';searchTerm='';orderPage=1;byId('orderSearch').value='';document.querySelectorAll('[data-type-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.typeFilter==='all'));renderOrders();}if(event.target.id==='importExcel')byId('excelFile').click();if(event.target.id==='openOrderDialog'){byId('orderForm').reset();delete byId('orderForm').dataset.editId;byId('formKicker').textContent='NEW TRANSACTION';byId('formHeading').textContent='新增业务订单';byId('formSubmit').textContent='保存订单';byId('orderDate').value=today;byId('serviceDate').value=today;byId('paymentStatus').value='paid';setOrderType('hotel');byId('orderStatus').value='booked';byId('orderDialog').showModal();}if(event.target.id==='editOrder')openEditOrder(event.target.dataset.id);if(event.target.id==='migrateLocalData')migrateLocalData();if(event.target.id==='signOut')signOut();if(event.target.id==='addPayment'){const order=orders.find(o=>o.id===event.target.dataset.id);const outstanding=order.gmv-order.received;const value=window.prompt(`登记收款（当前待收 ${compactCurrency(outstanding)}）`,outstanding);if(value!==null&&!Number.isNaN(Number(value))){order.received=Math.min(order.gmv,order.received+Number(value));order.paymentStatus=order.received>=order.gmv?'paid':'partial';save().then(()=>{renderAll();openDetails(order.id);}).catch(error=>window.alert(`保存收款失败：${error.message}`));}}});
 byId('calcExpression').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();calculateAndPreview();}});
 byId('excelFile').addEventListener('change',event=>{const [file]=event.target.files;if(file)importExcelFixed(file);});
 byId('orderSearch').addEventListener('input',e=>{searchTerm=e.target.value;orderPage=1;renderOrders();});
@@ -177,11 +293,21 @@ byId('supplierFilter').addEventListener('input',e=>{supplierFilter=e.target.valu
 byId('applyFilters').addEventListener('click',()=>{dateField=byId('dateField').value;dateStart=byId('dateStart').value;dateEnd=byId('dateEnd').value;activeType=byId('typeSelect').value;statusFilter=byId('statusFilter').value;paymentFilter=byId('paymentFilter').value;invoiceFilter=byId('invoiceFilter').value;locationFilter=byId('locationFilter').value.trim();supplierFilter=byId('supplierFilter').value.trim();searchTerm=byId('orderSearch').value.trim();orderPage=1;renderOrders();byId('applyFilters').classList.add('filter-applied');setTimeout(()=>byId('applyFilters').classList.remove('filter-applied'),450);});
 byId('clearFilters').addEventListener('click',()=>{activeType='all';dateField='orderDate';dateStart='';dateEnd='';statusFilter='all';paymentFilter='all';invoiceFilter='all';locationFilter='';supplierFilter='';searchTerm='';orderPage=1;byId('typeSelect').value='all';byId('dateField').value='orderDate';byId('dateStart').value='';byId('dateEnd').value='';byId('paymentFilter').value='all';byId('invoiceFilter').value='all';byId('locationFilter').value='';byId('supplierFilter').value='';byId('orderSearch').value='';updateStatusOptions();renderOrders();});
 ['gmv','cost','rooms','nights','tickets'].forEach(id=>byId(id).addEventListener('input',refreshFormPreview));
-byId('orderForm').addEventListener('submit',event=>{event.preventDefault();const type=byId('formType').value;const editId=byId('orderForm').dataset.editId;const sequence=String(orders.length+1).padStart(3,'0');const existing=orders.find(order=>order.id===editId);const paymentStatus=byId('paymentStatus').value;const paymentPlatform=byId('paymentPlatform').value.trim();const invoiceStatusValue=byId('invoiceStatus').value;const invoiceCompany=byId('invoiceCompany').value.trim();const gmv=Number(byId('gmv').value||0);let received=Number(byId('received').value||0);if(paymentStatus==='paid')received=gmv;if(paymentStatus==='unpaid'||paymentStatus==='refunded')received=0;const order={id:editId||`${type==='hotel'?'HT':'FL'}-${today.replaceAll('-','')}-${sequence}`,orderCode:existing?.orderCode||`ORD-${String(orders.length+1).padStart(5,'0')}`,type,customer:byId('customer').value.trim(),booker:byId('booker').value.trim(),orderDate:byId('orderDate').value,serviceDate:byId('serviceDate').value,location:byId('location').value.trim(),supplier:byId('supplier').value.trim(),product:byId('product').value.trim(),confirmation:byId('confirmation').value.trim(),rooms:type==='hotel'?Number(byId('rooms').value||1):0,nights:type==='hotel'?Number(byId('nights').value||0):0,tickets:type==='flight'?Number(byId('tickets').value||1):0,gmv,cost:Number(byId('cost').value||0),received,paymentStatus,paymentPlatform,invoiceStatus:invoiceStatusValue,invoiceCompany:invoiceStatusValue==='issued'?invoiceCompany:'',profitOverride:null,status:byId('orderStatus').value,issues:existing?.issues};if(existing)Object.assign(existing,order);else orders.unshift(order);save();delete byId('orderForm').dataset.editId;byId('orderDialog').close();renderAll();showView('orders');openDetails(order.id);});
+byId('orderForm').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const type=byId('formType').value, editId=byId('orderForm').dataset.editId, sequence=String(orders.length+1).padStart(3,'0'), existing=orders.find(order=>order.id===editId);
+  const paymentStatus=byId('paymentStatus').value, paymentPlatform=byId('paymentPlatform').value.trim(), invoiceStatusValue=byId('invoiceStatus').value, invoiceCompany=byId('invoiceCompany').value.trim();
+  const gmv=Number(byId('gmv').value||0); let received=Number(byId('received').value||0);
+  if(paymentStatus==='paid')received=gmv; if(paymentStatus==='unpaid'||paymentStatus==='refunded')received=0;
+  const order={id:editId||`${type==='hotel'?'HT':'FL'}-${today.replaceAll('-','')}-${sequence}`,orderCode:existing?.orderCode||`ORD-${String(orders.length+1).padStart(5,'0')}`,type,customer:byId('customer').value.trim(),booker:byId('booker').value.trim(),orderDate:byId('orderDate').value,serviceDate:byId('serviceDate').value,location:byId('location').value.trim(),supplier:byId('supplier').value.trim(),product:byId('product').value.trim(),confirmation:byId('confirmation').value.trim(),rooms:type==='hotel'?Number(byId('rooms').value||1):0,nights:type==='hotel'?Number(byId('nights').value||0):0,tickets:type==='flight'?Number(byId('tickets').value||1):0,gmv,cost:Number(byId('cost').value||0),received,paymentStatus,paymentPlatform,invoiceStatus:invoiceStatusValue,invoiceCompany:invoiceStatusValue==='issued'?invoiceCompany:'',profitOverride:existing?.profitOverride ?? null,status:byId('orderStatus').value,issues:existing?.issues};
+  if(existing)Object.assign(existing,order);else orders.unshift(order);
+  try { await save(); delete byId('orderForm').dataset.editId; byId('orderDialog').close(); renderAll(); showView('orders'); openDetails(order.id); }
+  catch(error) { window.alert(`保存订单失败：${error.message}`); }
+});
 byId('openOtherIncomeDialog').addEventListener('click',()=>{byId('otherIncomeForm').reset();byId('otherIncomeDate').value=today;byId('otherIncomeOrder').innerHTML='<option value="">不关联订单</option>'+orders.map(order=>`<option value="${order.id}">${orderCode(order)} · ${order.supplier} · ${order.customer}</option>`).join('');byId('otherIncomeNet').textContent='¥0';byId('otherIncomeDialog').showModal();});
 ['otherIncomeAmount','otherIncomeExpense'].forEach(id=>byId(id).addEventListener('input',()=>byId('otherIncomeNet').textContent=compactCurrency(Number(byId('otherIncomeAmount').value||0)-Number(byId('otherIncomeExpense').value||0))));
-byId('otherIncomeForm').addEventListener('submit',event=>{event.preventDefault();otherIncomes.unshift({id:`OI-${Date.now()}`,date:byId('otherIncomeDate').value,name:byId('otherIncomeName').value.trim(),orderId:byId('otherIncomeOrder').value,amount:Number(byId('otherIncomeAmount').value||0),expense:Number(byId('otherIncomeExpense').value||0)});saveOtherIncomes();byId('otherIncomeDialog').close();renderAll();showView('otherIncome');});
-document.addEventListener('click',event=>{const deleteIncome=event.target.closest('[data-delete-income]');if(deleteIncome&&window.confirm('确定删除这条其它收入记录吗？')){otherIncomes=otherIncomes.filter(item=>item.id!==deleteIncome.dataset.deleteIncome);saveOtherIncomes();renderAll();}});
+byId('otherIncomeForm').addEventListener('submit',async event=>{event.preventDefault();otherIncomes.unshift({id:`OI-${Date.now()}`,date:byId('otherIncomeDate').value,name:byId('otherIncomeName').value.trim(),orderId:byId('otherIncomeOrder').value,amount:Number(byId('otherIncomeAmount').value||0),expense:Number(byId('otherIncomeExpense').value||0)});try{await saveOtherIncomes();byId('otherIncomeDialog').close();renderAll();showView('otherIncome');}catch(error){window.alert(`保存其它收入失败：${error.message}`);}});
+document.addEventListener('click',event=>{const deleteIncome=event.target.closest('[data-delete-income]');if(deleteIncome&&window.confirm('确定删除这条其它收入记录吗？')){const id=deleteIncome.dataset.deleteIncome;otherIncomes=otherIncomes.filter(item=>item.id!==id);const removeCloud=cloudReady&&currentUser?supabaseClient.from('other_income').delete().eq('id',id):Promise.resolve({error:null});removeCloud.then(result=>{if(result.error)throw result.error;saveLocalOtherIncomes();renderAll();}).catch(error=>window.alert(`删除失败：${error.message}`));}});
 async function importExcelFixed(file){
   if(!window.XLSX){window.alert('Excel 解析组件未加载，请检查网络后刷新重试。');return;}
   const button=byId('importExcel');
@@ -227,7 +353,7 @@ async function importExcelFixed(file){
       cell(row,'order'),cell(row,'service'),cell(row,'location'),cell(row,'supplier'),cell(row,'product'),cell(row,'count'),cell(row,'confirmation'),cell(row,'traveler'),cell(row,'cost'),cell(row,'booker'),cell(row,'invoice'),cell(row,'payment'),cell(row,'paymentPlatform'),null,cell(row,'gmv'),cell(row,'profit')
     ],index)).filter(order=>order.orderDate||order.serviceDate||order.supplier!=='待确认'||order.gmv!==0);
     if(imported.length<1||!imported.some(order=>order.supplier!=='待确认'&&order.gmv>0))throw new Error(`已找到工作表“${found.sheetName}”，但没有识别到有效订单行。`);
-    orders=imported;save();
+    orders=imported;await save();
     activeType='all';dateField='orderDate';dateStart='';dateEnd='';statusFilter='all';paymentFilter='all';locationFilter='';supplierFilter='';searchTerm='';
     byId('typeSelect').value='all';byId('dateField').value='orderDate';byId('dateStart').value='';byId('dateEnd').value='';byId('paymentFilter').value='all';byId('locationFilter').value='';byId('supplierFilter').value='';byId('orderSearch').value='';
     updateStatusOptions();byId('periodSelect').value='all';byId('periodMonth').value=today.slice(0,7);renderAll();showView('orders');
@@ -240,4 +366,13 @@ async function importExcelFixed(file){
 byId('periodSelect').addEventListener('change',()=>{if(byId('periodSelect').value==='current')byId('periodMonth').value=today.slice(0,7);renderAll();});
 byId('periodMonth').addEventListener('change',()=>{if(byId('periodMonth').value)byId('periodSelect').value='custom';renderAll();});
 byId('dashboardDateField').addEventListener('change',e=>{dashboardDateField=e.target.value;renderAll();});
-renderAll();
+byId('authForm').addEventListener('submit',event=>{event.preventDefault();signIn();});
+byId('authSignUp').addEventListener('click',()=>signUp());
+async function initApp(){
+  if(!supabaseClient){setAuthStatus('Supabase 客户端未加载，请检查网络后刷新页面。','error');return;}
+  const {data,error}=await supabaseClient.auth.getSession();
+  if(error){setAuthStatus(`无法读取登录状态：${error.message}`,'error');return;}
+  await handleSession(data.session);
+  supabaseClient.auth.onAuthStateChange((_event,session)=>{setTimeout(()=>handleSession(session),0);});
+}
+initApp();
