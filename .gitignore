@@ -1,0 +1,5 @@
+.omx/
+.learnings/
+*.log
+*.tmp
+node_modules/
