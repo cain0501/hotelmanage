@@ -23,6 +23,14 @@ create table if not exists public.orders (
   received numeric not null default 0,
   payment_status text not null default 'paid',
   payment_platform text not null default '',
+  settlement_mode text not null default 'agency_pay',
+  guest_payment_to text not null default '',
+  commission_platform text not null default '',
+  commission_expected numeric not null default 0,
+  commission_received numeric not null default 0,
+  commission_status text not null default 'none',
+  direct_cost numeric not null default 0,
+  commission_received_date date,
   invoice_status text not null default 'unissued',
   invoice_company text not null default '',
   profit_override numeric,
@@ -69,6 +77,14 @@ alter table public.orders add column if not exists cost numeric default 0;
 alter table public.orders add column if not exists received numeric default 0;
 alter table public.orders add column if not exists payment_status text default 'paid';
 alter table public.orders add column if not exists payment_platform text default '';
+alter table public.orders add column if not exists settlement_mode text default 'agency_pay';
+alter table public.orders add column if not exists guest_payment_to text default '';
+alter table public.orders add column if not exists commission_platform text default '';
+alter table public.orders add column if not exists commission_expected numeric default 0;
+alter table public.orders add column if not exists commission_received numeric default 0;
+alter table public.orders add column if not exists commission_status text default 'none';
+alter table public.orders add column if not exists direct_cost numeric default 0;
+alter table public.orders add column if not exists commission_received_date date;
 alter table public.orders add column if not exists invoice_status text default 'unissued';
 alter table public.orders add column if not exists invoice_company text default '';
 alter table public.orders add column if not exists profit_override numeric;
