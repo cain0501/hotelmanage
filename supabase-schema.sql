@@ -39,6 +39,8 @@ create table if not exists public.other_income (
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   income_date date not null,
   name text not null default '',
+  payer text not null default '',
+  payee text not null default '',
   order_id text,
   amount numeric not null default 0,
   expense numeric not null default 0,
@@ -78,6 +80,8 @@ alter table public.orders add column if not exists updated_at timestamptz defaul
 alter table public.other_income add column if not exists user_id uuid references auth.users(id) on delete cascade;
 alter table public.other_income add column if not exists income_date date;
 alter table public.other_income add column if not exists name text default '';
+alter table public.other_income add column if not exists payer text default '';
+alter table public.other_income add column if not exists payee text default '';
 alter table public.other_income add column if not exists order_id text;
 alter table public.other_income add column if not exists amount numeric default 0;
 alter table public.other_income add column if not exists expense numeric default 0;
