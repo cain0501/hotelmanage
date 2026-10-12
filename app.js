@@ -42,6 +42,12 @@ const localOtherIncomes = JSON.parse(localStorage.getItem('qizhang-other-income'
 let otherIncomes = [];
 
 const byId = id => document.getElementById(id);
+document.addEventListener('click', event=>{
+  const deleteTrigger=event.target.closest('[data-delete-order]');
+  if(deleteTrigger){event.preventDefault();event.stopImmediatePropagation();deleteOrder(deleteTrigger.dataset.deleteOrder);return;}
+  const openTrigger=event.target.closest('[data-open-order]');
+  if(openTrigger){event.preventDefault();event.stopImmediatePropagation();openDetails(openTrigger.dataset.openOrder);}
+});
 const SUPABASE_URL = 'https://onomizgpzhqrmiuqeikf.supabase.co';
 // Publishable key 只能用于浏览器端，RLS 才是数据安全边界；不要替换成 service_role key。
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_PfLkfwLJTSGCIchlm3_xiQ_LuLj_JOC';
@@ -404,6 +410,29 @@ byId('periodMonth').addEventListener('change',()=>{if(byId('periodMonth').value)
 byId('dashboardDateField').addEventListener('change',e=>{dashboardDateField=e.target.value;renderAll();});
 byId('authForm').addEventListener('submit',event=>{event.preventDefault();signIn();});
 byId('authSignUp').addEventListener('click',()=>signUp());
+const renderOrdersOriginal = renderOrders;
+renderOrders = function renderOrdersWithVisibleActions(){
+  renderOrdersOriginal();
+  const actionHead=document.querySelector('#ordersView thead th:last-child');
+  if(actionHead){actionHead.textContent='操作';actionHead.style.width='104px';}
+  document.querySelectorAll('#orderTable tr[data-detail]').forEach(row=>{
+    const productCell=row.children[6];
+    if(productCell&&!productCell.querySelector('.confirmation-line')){
+      productCell.insertAdjacentHTML('beforeend','<small class="confirmation-line">确认号：未填写</small>');
+    }
+    const actionCell=row.lastElementChild;
+    if(actionCell){actionCell.innerHTML=`<div class="order-actions"><button class="button quiet" data-open-order="${row.dataset.detail}">查看</button><button class="button quiet danger" data-delete-order="${row.dataset.detail}">删除</button></div>`;}
+  });
+  document.querySelectorAll('#mobileOrderList article[data-detail]').forEach(card=>{
+    const subtitle=card.querySelector('.mobile-order-subtitle');
+    if(subtitle&&!subtitle.querySelector('.mobile-order-confirmation')){
+      const first=subtitle.querySelector('span');
+      if(first)first.insertAdjacentHTML('afterend','<span class="mobile-order-confirmation">确认号：未填写</span>');
+    }
+    if(!card.querySelector('[data-delete-order]'))card.insertAdjacentHTML('beforeend',`<div class="mobile-order-actions"><button class="button quiet" data-open-order="${card.dataset.detail}">查看详情</button><button class="button quiet danger" data-delete-order="${card.dataset.detail}">删除订单</button></div>`);
+  });
+};
+
 async function initApp(){
   if(!supabaseClient){setAuthStatus('Supabase 客户端未加载，请检查网络后刷新页面。','error');return;}
   const {data,error}=await supabaseClient.auth.getSession();
