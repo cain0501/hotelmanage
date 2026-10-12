@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261012-7" />
+    <link rel="stylesheet" href="styles.css?v=20261012-8" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -176,9 +176,15 @@
 
         <section class="view active" id="dashboardView">
           <div class="hero-strip">
-            <div><p id="heroPeriodLabel">本月净 GMV</p><strong id="heroGmv">¥0</strong><small id="heroMeta">已录入 0 笔有效订单</small></div>
-            <div class="hero-ring"><span>利润率</span><b id="heroMargin">0%</b></div>
+            <div><p id="heroPeriodLabel">本月综合净收益</p><strong id="heroGmv">¥0</strong><small id="heroMeta">订单业务利润 + 其它收入净额</small></div>
+            <div class="hero-ring"><span>订单利润率</span><b id="heroMargin">0%</b></div>
           </div>
+
+          <section class="earnings-grid" aria-label="收益拆分">
+            <article class="metric-card earnings-order"><p>订单业务利润</p><strong id="orderProfit">¥0</strong><span>酒店 / 机票 GMV − 成本</span></article>
+            <article class="metric-card earnings-other"><p>其它收入净额</p><strong id="dashboardOtherIncomeNet">¥0</strong><span id="otherIncomeHint">收入 ¥0 · 支出 ¥0</span></article>
+            <article class="metric-card dark earnings-total"><p>综合净收益</p><strong id="combinedNetProfit">¥0</strong><span>订单业务利润 + 其它收入净额</span></article>
+          </section>
 
           <section class="metric-grid" aria-label="关键经营指标">
             <article class="metric-card"><p>酒店订单</p><strong id="hotelOrders">0</strong><span id="hotelOrderHint">—</span></article>
@@ -190,7 +196,7 @@
 
           <section class="dashboard-grid">
             <article class="panel trend-panel">
-              <div class="panel-head"><div><p class="eyebrow">CASH & MARGIN</p><h2>GMV 与利润走势</h2></div><span class="legend"><i></i>GMV <i></i>利润</span></div>
+              <div class="panel-head"><div><p class="eyebrow">ORDER BUSINESS</p><h2>订单 GMV 与利润走势</h2></div><span class="legend"><i></i>GMV <i></i>利润</span></div>
               <div class="trend-chart" id="trendChart" aria-label="GMV 与利润走势图"></div>
             </article>
             <article class="panel action-panel">
@@ -385,6 +391,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261012-7"></script>
+    <script src="app.js?v=20261012-8"></script>
   </body>
 </html>

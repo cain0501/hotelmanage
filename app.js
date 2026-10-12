@@ -233,6 +233,8 @@ function syncDashboardMonthPicker() {
   month.disabled=select.value==='all';
 }
 function dashboardOrders() { const period=byId('periodSelect').value; const month=period==='current'?today.slice(0,7):byId('periodMonth').value; return period==='all' ? orders : orders.filter(order => (order[dashboardDateField] || '').slice(0, 7) === month); }
+function dashboardOtherIncomes() { const period=byId('periodSelect').value; const month=period==='current'?today.slice(0,7):byId('periodMonth').value; return period==='all' ? otherIncomes : otherIncomes.filter(item => (item.date || '').slice(0, 7) === month); }
+function otherIncomeNet(item) { return Number(item.amount || 0) - Number(item.expense || 0); }
 function transactionRows() {
   const orderRows=dashboardOrders().flatMap(order => {
     const rows = [];
@@ -248,12 +250,15 @@ function sums(list) { return list.reduce((acc, order) => ({ gmv:acc.gmv + Number
 function renderDashboard() {
   syncDashboardMonthPicker();
   const data = dashboardOrders(); const total = sums(data);
+  const incomeData = dashboardOtherIncomes(); const otherIncomeTotal = incomeData.reduce((sum,item)=>sum+Number(item.amount||0),0); const otherExpenseTotal = incomeData.reduce((sum,item)=>sum+Number(item.expense||0),0); const otherNet = incomeData.reduce((sum,item)=>sum+otherIncomeNet(item),0); const combinedNet = total.profit+otherNet;
   const hotels = data.filter(o => o.type === 'hotel'); const flights = data.filter(o => o.type === 'flight');
   const period=byId('periodSelect').value; const selectedMonth=byId('periodMonth').value; const periodLabel=period==='all'?'全部数据':period==='current'?'本月':selectedMonth?`${selectedMonth.slice(0,4)}年${Number(selectedMonth.slice(5,7))}月`:'指定月份';
-  byId('heroPeriodLabel').textContent=`${periodLabel}净 GMV`;
-  byId('heroGmv').textContent = compactCurrency(total.gmv);
-  byId('heroMeta').textContent = `按${dashboardDateField==='orderDate'?'下单日期':'入住 / 出发日期'}统计 · ${data.length} 笔有效订单 · ${compactCurrency(total.profit)} 利润`;
+  byId('heroPeriodLabel').textContent=`${periodLabel}综合净收益`;
+  byId('heroGmv').textContent = compactCurrency(combinedNet);
+  byId('heroMeta').textContent = `订单业务利润 ${compactCurrency(total.profit)} · 其它收入净额 ${compactCurrency(otherNet)} · ${data.length} 笔订单 / ${incomeData.length} 笔其它收入`;
   byId('heroMargin').textContent = total.gmv ? `${(total.profit / total.gmv * 100).toFixed(1)}%` : '—';
+  byId('orderProfit').textContent=compactCurrency(total.profit); byId('dashboardOtherIncomeNet').textContent=compactCurrency(otherNet); byId('combinedNetProfit').textContent=compactCurrency(combinedNet);
+  byId('otherIncomeHint').textContent=`收入 ${compactCurrency(otherIncomeTotal)} · 支出 ${compactCurrency(otherExpenseTotal)}`;
   byId('hotelOrders').textContent = hotels.length; byId('hotelOrderHint').textContent = `${compactCurrency(sums(hotels).gmv)} GMV`;
   byId('roomNights').textContent = hotels.reduce((n,o)=>n+roomNights(o),0);
   byId('flightOrders').textContent = flights.length; byId('flightOrderHint').textContent = `${compactCurrency(sums(flights).gmv)} GMV`;
