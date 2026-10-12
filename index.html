@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261012-2" />
+    <link rel="stylesheet" href="styles.css?v=20261012-3" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -90,6 +90,7 @@
       .month-query input[type="month"] { width:132px; padding:9px 8px; }
       .month-query input[type="month"]:disabled { background:#f1ecdf; color:#aaa297; cursor:not-allowed; }
       #orderTable .invoice-issued { background:#dceefa; color:#2b6f97; }
+      #orderTable .invoice-no-invoice { background:#eee9df; color:#756d62; }
       #orderTable td:nth-child(11) .status.paid { background:#dceefa; color:#2b6f97; }
       .invoice-company { display:block; margin-top:4px; color:#2b6f97; font-size:11px; max-width:150px; white-space:normal; overflow-wrap:anywhere; }
       @media(max-width:1050px){.filter-grid{grid-template-columns:repeat(3,1fr)}.filter-keyword{grid-column:span 1}} @media(max-width:650px){.filter-grid{grid-template-columns:1fr 1fr}.filter-title>span{display:none}}
@@ -221,7 +222,7 @@
               <label>业务类型<select id="typeSelect"><option value="all">全部业务</option><option value="hotel">酒店</option><option value="flight">机票</option></select></label>
               <label>订单状态<select id="statusFilter"><option value="all">全部状态</option></select></label>
               <label>收款状态<select id="paymentFilter"><option value="all">全部收款状态</option><option value="paid">已收款</option><option value="partial">部分付款</option><option value="unpaid">未付款</option><option value="refunded">已退款</option></select></label>
-              <label>开票状态<select id="invoiceFilter"><option value="all">全部开票状态</option><option value="issued">已开票</option><option value="unissued">未开票</option></select></label>
+              <label>开票状态<select id="invoiceFilter"><option value="all">全部开票状态</option><option value="issued">已开票</option><option value="unissued">未开票</option><option value="no_invoice">无发票</option></select></label>
               <label>城市 / 航线<input id="locationFilter" placeholder="如：广州" /></label>
               <label>酒店 / 航司<input id="supplierFilter" placeholder="如：广州瑰丽" /></label>
               <label class="filter-keyword">关键词<input id="orderSearch" type="search" placeholder="客户、预订人、房型、确认号" /></label>
@@ -284,7 +285,7 @@
           <label>付款状态<select id="paymentStatus"><option value="paid">已收款</option><option value="unpaid">未付款</option><option value="partial">部分付款</option><option value="refunded">已退款</option></select></label>
           <label>付款平台<input id="paymentPlatform" list="paymentPlatformOptions" placeholder="如：携程 / 飞猪 / 供应商直付" /></label>
           <label>已收金额<span class="amount-input"><input required id="received" type="number" min="0" step="0.01" placeholder="0.00" /><button type="button" class="calc-trigger" data-calc-for="received" aria-label="计算已收金额">⌗</button></span></label>
-          <label>开票状态<select id="invoiceStatus"><option value="unissued">未开票</option><option value="issued">已开票</option></select></label>
+          <label>开票状态<select id="invoiceStatus"><option value="unissued">未开票</option><option value="issued">已开票</option><option value="no_invoice">无发票</option></select></label>
           <label>开票公司<input id="invoiceCompany" placeholder="已开票时填写公司名称" /></label>
         </div>
         <datalist id="paymentPlatformOptions">
@@ -382,6 +383,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261012-2"></script>
+    <script src="app.js?v=20261012-3"></script>
   </body>
 </html>
