@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261013-13" />
+    <link rel="stylesheet" href="styles.css?v=20261013-14" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -54,6 +54,17 @@
       .bar-col:hover .bar-tooltip { opacity:1; transform:translate(-50%,0); }
       @keyframes bar-rise { from { transform:scaleY(0); opacity:.3; } to { transform:scaleY(1); opacity:1; } }
       .rank-panel .ranking { max-height:440px; overflow:auto; }
+      .booker-panel .ranking { max-height:440px; overflow:auto; }
+      .rank-sub { display:block; margin-top:4px; color:#9a9388; font-size:10px; }
+      .platform-panel { background:linear-gradient(135deg,#fffdf8 0%,#f6f0e4 100%); }
+      @media(min-width:1101px){
+        .dashboard-grid .city-panel:not(.platform-panel) { grid-column:1; grid-row:3; }
+        .dashboard-grid .platform-panel { grid-column:2; grid-row:3; }
+        .dashboard-grid .ledger-peek { grid-column:1 / -1; grid-row:4; }
+      }
+      @media(max-width:1100px){
+        .dashboard-grid .city-panel, .dashboard-grid .platform-panel, .dashboard-grid .ledger-peek { grid-column:auto; grid-row:auto; }
+      }
       .city-panel { min-height:350px; overflow:hidden; background:linear-gradient(135deg,#fffdf8 0%,#f6f0e4 100%); }
       .city-chart-wrap { display:flex; align-items:center; gap:26px; padding:10px 24px 28px; min-height:285px; }
       .city-donut { width:205px; height:205px; flex:0 0 205px; border-radius:50%; display:grid; place-items:center; background:conic-gradient(#d2ab70 0deg 360deg); transition:background .8s cubic-bezier(.2,.8,.2,1), transform .35s ease; animation:donut-in .8s ease both; }
@@ -210,9 +221,17 @@
               <div class="panel-head"><div><p class="eyebrow">HOTEL PERFORMANCE</p><h2>酒店贡献排行</h2></div><button class="text-button" data-go="orders">订单台账</button></div>
               <div id="hotelRanking" class="ranking"></div>
             </article>
+            <article class="panel rank-panel booker-panel">
+              <div class="panel-head"><div><p class="eyebrow">BOOKER PERFORMANCE</p><h2>预订人贡献排行</h2></div><span class="panel-caption">按 GMV</span></div>
+              <div id="bookerRanking" class="ranking"></div>
+            </article>
             <article class="panel ledger-peek">
               <div class="panel-head"><div><p class="eyebrow">RECENT CASHFLOW</p><h2>最近资金流水</h2></div><button class="text-button" data-go="ledger">全部流水</button></div>
               <div id="recentLedger" class="mini-ledger"></div>
+            </article>
+            <article class="panel city-panel platform-panel">
+              <div class="panel-head"><div><p class="eyebrow">PAYMENT MIX</p><h2>付款平台分布</h2></div><span class="panel-caption">按 GMV</span></div>
+              <div class="city-chart-wrap"><div class="city-donut platform-donut" id="platformDonut"><div><strong id="platformTotal">¥0</strong><span>平台 GMV</span></div></div><div id="platformLegend" class="city-legend"></div></div>
             </article>
             <article class="panel city-panel">
               <div class="panel-head"><div><p class="eyebrow">CITY MIX</p><h2>城市分布</h2></div><span class="panel-caption">按 GMV</span></div>
@@ -402,6 +421,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261013-13"></script>
+    <script src="app.js?v=20261013-14"></script>
   </body>
 </html>

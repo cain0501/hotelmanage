@@ -285,7 +285,7 @@ function renderDashboard() {
   byId('ticketCount').textContent = flights.reduce((n,o)=>n+Number(o.tickets||0),0);
   const outstanding = data.filter(customerReceivable); const due = outstanding.reduce((n,o)=>n+Math.max(0,o.gmv-o.received),0); const commissionDue=data.filter(isCommissionOrder).reduce((n,o)=>n+commissionOutstanding(o),0); const commissionOrders=data.filter(o=>isCommissionOrder(o)&&commissionOutstanding(o)>0).length;
   byId('receivable').textContent = compactCurrency(due); byId('receivableHint').textContent = `${outstanding.length} 笔需跟进`; byId('commissionReceivable').textContent=compactCurrency(commissionDue); byId('commissionReceivableHint').textContent=`${commissionOrders} 笔待到账`;
-  renderTrend(); renderQueue(); renderRanking(); renderRecentLedger();
+  renderTrend(); renderQueue(); renderRanking(); renderBookerRanking(); renderRecentLedger(); renderPaymentPlatformDistribution();
 }
 function renderTrend() {
   const monthly = {};
@@ -301,6 +301,17 @@ function renderRanking() {
   const ranked=Object.values(orders.filter(o=>o.type==='hotel').reduce((map,o)=>{(map[o.supplier] ||= 0);map[o.supplier]+=Number(o.gmv);return map},{})).length;
   const list=Object.entries(dashboardOrders().filter(o=>o.type==='hotel').reduce((map,o)=>{map[o.supplier]=(map[o.supplier]||0)+Number(o.gmv);return map},{})).sort((a,b)=>b[1]-a[1]).slice(0,10);
   const max=list[0]?.[1]||1; byId('hotelRanking').innerHTML=list.map(([name,amount],i)=>`<div class="rank-row"><b>0${i+1}</b><div><span class="rank-name">${name}</span><div class="rank-line"><span style="width:${amount/max*100}%"></span></div></div><strong>${compactCurrency(amount)}</strong></div>`).join('') || '<div class="empty-state">暂无酒店订单</div>';
+}
+function renderBookerRanking() {
+  const bookerMap=dashboardOrders().reduce((map,order)=>{const name=String(order.booker||'未填写').trim()||'未填写';const item=map[name]||{gmv:0,orders:0};item.gmv+=Number(order.gmv||0);item.orders+=1;map[name]=item;return map},{});
+  const list=Object.entries(bookerMap).sort((a,b)=>b[1].gmv-a[1].gmv).slice(0,10);const max=list[0]?.[1].gmv||1;
+  byId('bookerRanking').innerHTML=list.map(([name,item],i)=>`<div class="rank-row booker-rank-row"><b>${String(i+1).padStart(2,'0')}</b><div><span class="rank-name" title="${name}">${name}</span><div class="rank-line"><span style="width:${item.gmv/max*100}%"></span></div><small class="rank-sub">${item.orders} 笔订单</small></div><strong>${compactCurrency(item.gmv)}</strong></div>`).join('')||'<div class="empty-state">暂无预订人数据</div>';
+}
+function renderPaymentPlatformDistribution() {
+  const platformMap=dashboardOrders().reduce((map,order)=>{const platform=String(order.paymentPlatform||'未填写平台').trim()||'未填写平台';map[platform]=(map[platform]||0)+Number(order.gmv||0);return map},{});
+  const sorted=Object.entries(platformMap).sort((a,b)=>b[1]-a[1]);const total=sorted.reduce((sum,[,value])=>sum+value,0);const top=sorted.slice(0,7);const rest=sorted.slice(7).reduce((sum,[,value])=>sum+value,0);if(rest>0)top.push(['其他',rest]);
+  const colors=['#1f5b4e','#bd843b','#6d9b8d','#d6b47a','#8b6d4b','#47796f','#b6c9c0','#d8d1c4'];let cursor=0;const stops=top.map(([name,value],index)=>{const start=cursor;cursor+=total?value/total*360:0;return `${colors[index%colors.length]} ${start}deg ${cursor}deg`;});
+  byId('platformTotal').textContent=compactCurrency(total);byId('platformDonut').style.background=top.length?`conic-gradient(${stops.join(',')})`:'conic-gradient(#ded7c7 0deg 360deg)';byId('platformLegend').innerHTML=top.map(([name,value],index)=>{const share=total?Math.round(value/total*100):0;return `<div class="city-legend-row" title="${name} · ${compactCurrency(value)}" style="--legend-delay:${index*65}ms;--city-share:${share}%;color:${colors[index%colors.length]}"><i style="background:${colors[index%colors.length]}"></i><span>${name}</span><b>${share}%</b></div>`}).join('')||'<div class="empty-state">暂无付款平台数据</div>';
 }
 function renderCityDistribution() {
   const cityMap=dashboardOrders().reduce((map,order)=>{const city=String(order.location||'未填写').trim()||'未填写';map[city]=(map[city]||0)+Number(order.gmv||0);return map},{});
