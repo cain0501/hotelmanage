@@ -8,11 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261013-12" />
+    <link rel="stylesheet" href="styles.css?v=20261013-13" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
       #orderTable tr.unpaid-order td:first-child { box-shadow: inset 4px 0 0 #bd5648; }
+      #orderTable tr.clickable { cursor: default; }
+      #orderTable tr.clickable:hover td { background: inherit; }
       .date-filter { display:flex; align-items:center; gap:5px; color:#817b70; font-size:12px; white-space:nowrap; }
       .date-filter select, .date-filter input { padding:8px 8px; font-size:12px; }
       #ordersView table { min-width:1160px; table-layout:fixed; }
@@ -245,7 +247,7 @@
               </table>
             </div>
             <div id="mobileOrderList" class="mobile-order-list"></div>
-            <div class="table-footer"><span id="orderCountLabel">0 笔订单</span><span id="orderPagination" class="order-pagination"></span><span>点击订单查看完整信息与账目</span></div>
+            <div class="table-footer"><span id="orderCountLabel">0 笔订单</span><span id="orderPagination" class="order-pagination"></span><span>请点击右侧“查看”查看完整信息与账目</span></div>
           </div>
         </section>
 
@@ -400,6 +402,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261013-12"></script>
+    <script src="app.js?v=20261013-13"></script>
   </body>
 </html>

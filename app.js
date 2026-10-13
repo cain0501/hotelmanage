@@ -391,7 +391,7 @@ function openEditOrder(id){const o=orders.find(order=>order.id===id);if(!o)retur
 document.addEventListener('click', event=>{
   const nav=event.target.closest('[data-view]'); if(nav)showView(nav.dataset.view);
   const go=event.target.closest('[data-go]'); if(go)showView(go.dataset.go);
-  const detail=event.target.closest('[data-detail]'); if(detail)openDetails(detail.dataset.detail);
+  const detail=event.target.closest('[data-detail]'); if(detail && !detail.closest('#orderTable') && !detail.closest('#mobileOrderList'))openDetails(detail.dataset.detail);
   const close=event.target.closest('[data-close]'); if(close)byId(close.dataset.close).close();
   const page=event.target.closest('[data-order-page]'); if(page&&!page.disabled){orderPage=Number(page.dataset.orderPage);renderOrders();}
   const type=event.target.closest('[data-order-type]'); if(type)setOrderType(type.dataset.orderType);
