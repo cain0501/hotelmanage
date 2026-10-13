@@ -67,8 +67,7 @@ const saveOrdersBatch = async () => {
   setSyncStatus('已同步到云端', 'synced');
 };
 const saveOrder = async order => {
-  saveLocalOrders();
-  if (!cloudReady || !currentUser) return;
+  if (!cloudReady || !currentUser) { saveLocalOrders(); return; }
   setSyncStatus('正在同步订单…', 'syncing');
   const { error } = await supabaseClient.from('orders').upsert([orderToRow(order)], { onConflict: 'user_id,id' });
   if (error) { setSyncStatus(`同步失败：${error.message}`, 'sync-error'); throw error; }
@@ -91,6 +90,15 @@ const saveOtherIncome = async item => {
   setSyncStatus('已同步到云端', 'synced');
 };
 const orderCode = order => order.orderCode || order.id;
+const nextOrderCode = () => {
+  const usedCodes = new Set(orders.map(orderCode));
+  const numericCodes = [...usedCodes].map(code => /^ORD-(\d+)$/.exec(code)).filter(Boolean).map(match => Number(match[1]));
+  let next = Math.max(0, ...numericCodes) + 1;
+  let candidate = `ORD-${String(next).padStart(5, '0')}`;
+  while (usedCodes.has(candidate)) candidate = `ORD-${String(++next).padStart(5, '0')}`;
+  return candidate;
+};
+const newOrderId = type => `${type === 'hotel' ? 'HT' : 'FL'}-${today.replaceAll('-', '')}-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 const settlementMode = order => order.settlementMode || 'agency_pay';
 const isCommissionOrder = order => settlementMode(order) === 'guest_pay_commission';
 const commissionReceived = order => asNumber(order.commissionReceived);
@@ -425,14 +433,14 @@ byId('orderForm').addEventListener('submit',async event=>{
   submitButton.disabled=true;
   const originalSubmitText=submitButton.textContent;
   submitButton.textContent='保存中…';
-  const type=byId('formType').value, editId=byId('orderForm').dataset.editId, sequence=String(orders.length+1).padStart(3,'0'), existing=orders.find(order=>order.id===editId);
+  const type=byId('formType').value, editId=byId('orderForm').dataset.editId, existing=orders.find(order=>order.id===editId), previous=existing ? { ...existing } : null;
   const paymentStatus=byId('paymentStatus').value, paymentPlatform=byId('paymentPlatform').value.trim(), invoiceStatusValue=byId('invoiceStatus').value, invoiceCompany=byId('invoiceCompany').value.trim();
   const gmv=Number(byId('gmv').value||0); let received=Number(byId('received').value||0);
   if(paymentStatus==='paid')received=gmv; if(paymentStatus==='unpaid'||paymentStatus==='refunded')received=0;
-  const commission=byId('settlementMode').value==='guest_pay_commission'; const order={id:editId||`${type==='hotel'?'HT':'FL'}-${today.replaceAll('-','')}-${sequence}`,orderCode:existing?.orderCode||`ORD-${String(orders.length+1).padStart(5,'0')}`,type,customer:byId('customer').value.trim(),booker:byId('booker').value.trim(),orderDate:byId('orderDate').value,serviceDate:byId('serviceDate').value,location:byId('location').value.trim(),supplier:byId('supplier').value.trim(),product:byId('product').value.trim(),confirmation:byId('confirmation').value.trim(),rooms:type==='hotel'?Number(byId('rooms').value||1):0,nights:type==='hotel'?Number(byId('nights').value||0):0,tickets:type==='flight'?Number(byId('tickets').value||1):0,gmv,cost:commission?0:Number(byId('cost').value||0),received:commission?0:received,paymentStatus:commission?'unpaid':paymentStatus,paymentPlatform,settlementMode:byId('settlementMode').value,guestPaymentTo:byId('guestPaymentTo').value.trim(),commissionPlatform:byId('commissionPlatform').value.trim(),commissionExpected:commission?Number(byId('commissionExpected').value||0):0,commissionReceived:commission?Number(byId('commissionReceived').value||0):0,commissionStatus:commission?byId('commissionStatus').value:'none',directCost:commission?Number(byId('directCost').value||0):0,commissionReceivedDate:commission?byId('commissionReceivedDate').value:'',invoiceStatus:invoiceStatusValue,invoiceCompany:invoiceStatusValue==='issued'?invoiceCompany:'',profitOverride:existing?.profitOverride ?? null,status:byId('orderStatus').value,issues:existing?.issues};
+  const commission=byId('settlementMode').value==='guest_pay_commission'; const order={id:editId||newOrderId(type),orderCode:existing?.orderCode||nextOrderCode(),type,customer:byId('customer').value.trim(),booker:byId('booker').value.trim(),orderDate:byId('orderDate').value,serviceDate:byId('serviceDate').value,location:byId('location').value.trim(),supplier:byId('supplier').value.trim(),product:byId('product').value.trim(),confirmation:byId('confirmation').value.trim(),rooms:type==='hotel'?Number(byId('rooms').value||1):0,nights:type==='hotel'?Number(byId('nights').value||0):0,tickets:type==='flight'?Number(byId('tickets').value||1):0,gmv,cost:commission?0:Number(byId('cost').value||0),received:commission?0:received,paymentStatus:commission?'unpaid':paymentStatus,paymentPlatform,settlementMode:byId('settlementMode').value,guestPaymentTo:byId('guestPaymentTo').value.trim(),commissionPlatform:byId('commissionPlatform').value.trim(),commissionExpected:commission?Number(byId('commissionExpected').value||0):0,commissionReceived:commission?Number(byId('commissionReceived').value||0):0,commissionStatus:commission?byId('commissionStatus').value:'none',directCost:commission?Number(byId('directCost').value||0):0,commissionReceivedDate:commission?byId('commissionReceivedDate').value:'',invoiceStatus:invoiceStatusValue,invoiceCompany:invoiceStatusValue==='issued'?invoiceCompany:'',profitOverride:existing?.profitOverride ?? null,status:byId('orderStatus').value,issues:existing?.issues};
   if(existing)Object.assign(existing,order);else orders.unshift(order);
-  try { await saveOrder(order); delete byId('orderForm').dataset.editId; byId('orderDialog').close(); renderAll(); showView('orders'); openDetails(order.id); }
-  catch(error) { submitButton.disabled=false; submitButton.textContent=originalSubmitText; window.alert(`保存订单失败：${error.message}`); }
+  try { await saveOrder(order); saveLocalOrders(); delete byId('orderForm').dataset.editId; byId('orderDialog').close(); renderAll(); showView('orders'); openDetails(order.id); }
+  catch(error) { if(existing && previous) Object.assign(existing, previous); else orders=orders.filter(item=>item.id!==order.id); saveLocalOrders(); submitButton.disabled=false; submitButton.textContent=originalSubmitText; window.alert(`保存订单失败：${error.message}`); }
 });
 byId('openOtherIncomeDialog').addEventListener('click',()=>openOtherIncomeForm());
 byId('otherIncomeOrderSearch').addEventListener('input',renderOtherIncomeOrderPicker);
