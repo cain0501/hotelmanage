@@ -210,3 +210,136 @@ begin
   end;
 end;
 $$;
+
+-- AI 工作台：会话、上下文、工具调用、待确认操作和专业知识库。
+-- 这些表只保存 AI 工作流状态，不改变 orders / other_income 的业务口径。
+create table if not exists public.assistant_conversations (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  title text not null default 'AI 工作台',
+  summary text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.assistant_messages (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  conversation_id uuid not null references public.assistant_conversations(id) on delete cascade,
+  role text not null check (role in ('user', 'assistant', 'tool', 'system')),
+  content text not null default '',
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.assistant_context (
+  conversation_id uuid primary key references public.assistant_conversations(id) on delete cascade,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  date_field text not null default 'order_date',
+  period_start date,
+  period_end date,
+  order_type text not null default 'all',
+  city text not null default '',
+  supplier text not null default '',
+  booker text not null default '',
+  pending_question text not null default '',
+  context jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.assistant_runs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  conversation_id uuid references public.assistant_conversations(id) on delete set null,
+  user_message text not null default '',
+  status text not null default 'running' check (status in ('running', 'completed', 'waiting_confirmation', 'failed', 'cancelled')),
+  current_step text not null default '',
+  error_message text not null default '',
+  created_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+
+create table if not exists public.assistant_tool_calls (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  run_id uuid references public.assistant_runs(id) on delete cascade,
+  conversation_id uuid references public.assistant_conversations(id) on delete set null,
+  tool_name text not null,
+  arguments jsonb not null default '{}'::jsonb,
+  result jsonb not null default '{}'::jsonb,
+  status text not null default 'completed' check (status in ('started', 'completed', 'failed')),
+  error_message text not null default '',
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.assistant_pending_actions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  run_id uuid references public.assistant_runs(id) on delete set null,
+  conversation_id uuid references public.assistant_conversations(id) on delete set null,
+  action_type text not null,
+  affected_record_ids jsonb not null default '[]'::jsonb,
+  preview jsonb not null default '{}'::jsonb,
+  status text not null default 'pending' check (status in ('pending', 'confirmed', 'rejected', 'expired')),
+  expires_at timestamptz,
+  confirmed_by uuid references auth.users(id) on delete set null,
+  confirmed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.assistant_knowledge (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  title text not null default '',
+  category text not null default 'hotel_product',
+  scope text not null default 'personal' check (scope in ('personal', 'team')),
+  content text not null default '',
+  keywords text[] not null default '{}',
+  source text not null default '用户提供',
+  source_type text not null default 'manual',
+  effective_from date,
+  expires_at date,
+  version integer not null default 1,
+  status text not null default 'draft' check (status in ('draft', 'published', 'expired', 'archived')),
+  created_by uuid references auth.users(id) on delete set null,
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.assistant_conversations enable row level security;
+alter table public.assistant_messages enable row level security;
+alter table public.assistant_context enable row level security;
+alter table public.assistant_runs enable row level security;
+alter table public.assistant_tool_calls enable row level security;
+alter table public.assistant_pending_actions enable row level security;
+alter table public.assistant_knowledge enable row level security;
+
+drop policy if exists "assistant_conversations_own" on public.assistant_conversations;
+create policy "assistant_conversations_own" on public.assistant_conversations for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "assistant_messages_own" on public.assistant_messages;
+create policy "assistant_messages_own" on public.assistant_messages for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "assistant_context_own" on public.assistant_context;
+create policy "assistant_context_own" on public.assistant_context for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "assistant_runs_own" on public.assistant_runs;
+create policy "assistant_runs_own" on public.assistant_runs for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "assistant_tool_calls_own" on public.assistant_tool_calls;
+create policy "assistant_tool_calls_own" on public.assistant_tool_calls for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "assistant_pending_actions_own" on public.assistant_pending_actions;
+create policy "assistant_pending_actions_own" on public.assistant_pending_actions for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "assistant_knowledge_own" on public.assistant_knowledge;
+create policy "assistant_knowledge_own" on public.assistant_knowledge for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+create index if not exists assistant_conversations_user_updated_idx on public.assistant_conversations (user_id, updated_at desc);
+create index if not exists assistant_messages_conversation_created_idx on public.assistant_messages (conversation_id, created_at);
+create index if not exists assistant_runs_user_created_idx on public.assistant_runs (user_id, created_at desc);
+create index if not exists assistant_tool_calls_run_created_idx on public.assistant_tool_calls (run_id, created_at);
+create index if not exists assistant_pending_actions_user_status_idx on public.assistant_pending_actions (user_id, status, created_at desc);
+create index if not exists assistant_knowledge_user_status_idx on public.assistant_knowledge (user_id, status, updated_at desc);
+
+drop trigger if exists assistant_conversations_set_updated_at on public.assistant_conversations;
+create trigger assistant_conversations_set_updated_at before update on public.assistant_conversations for each row execute function public.set_updated_at();
+drop trigger if exists assistant_context_set_updated_at on public.assistant_context;
+create trigger assistant_context_set_updated_at before update on public.assistant_context for each row execute function public.set_updated_at();
+drop trigger if exists assistant_knowledge_set_updated_at on public.assistant_knowledge;
+create trigger assistant_knowledge_set_updated_at before update on public.assistant_knowledge for each row execute function public.set_updated_at();

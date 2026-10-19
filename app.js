@@ -46,6 +46,11 @@ const AI_SETTINGS_STORAGE_KEY='qizhang-ai-settings-draft';
 let aiSettings = { provider:'openai-compatible', baseUrl:'https://api.openai.com/v1', model:'gpt-4o-mini', temperature:0.1, enabled:false };
 let aiDraft = null;
 let analysisResult = null;
+let assistantConversationId = null;
+let assistantMessages = [];
+let assistantContext = {};
+let assistantKnowledge = [];
+let assistantWorkspaceAvailable = false;
 let cleanupPreviewOrders = [];
 let cleanupPreviewField = '';
 let cleanupPreviewFrom = '';
@@ -195,13 +200,81 @@ async function saveAiSettings(){
   aiSettings={provider:byId('aiProvider').value,baseUrl:byId('aiBaseUrl').value.trim()||'https://api.openai.com/v1',model:byId('aiModel').value.trim()||'gpt-4o-mini',temperature:Math.min(.5,Math.max(0,Number(byId('aiTemperature').value||.1))),enabled:byId('aiEnabled').checked};localStorage.setItem(AI_SETTINGS_STORAGE_KEY,JSON.stringify(aiSettings));
   try{if(!cloudReady||!currentUser)throw new Error('请先登录云端账户');const {data,error}=await supabaseClient.from('ai_settings').upsert({user_id:currentUser.id,provider:aiSettings.provider,base_url:aiSettings.baseUrl,model:aiSettings.model,temperature:aiSettings.temperature,enabled:aiSettings.enabled},{onConflict:'user_id'}).select('provider,base_url,model,temperature,enabled').single();if(error)throw error;aiSettings={provider:data.provider,baseUrl:data.base_url,model:data.model,temperature:Number(data.temperature),enabled:Boolean(data.enabled)};syncAiSettingsForm();status.textContent='配置已保存并同步到云端';status.className='ai-status success';}catch(error){status.textContent=`云端保存失败：${error.message}，已保留本机草稿`;status.className='ai-status error';}finally{button.disabled=false;}
 }
-function aiValue(value){return value===null||value===undefined?'':String(value);}
+const assistantConversationStorageKey=()=>`qizhang-assistant-conversation-${currentUser?.id||'guest'}`;
+const assistantStatusText=status=>({draft:'草稿',published:'已发布',expired:'已过期',archived:'已废弃'})[status]||status||'草稿';
+const assistantKnowledgeCategoryText=category=>({hotel_product:'酒店产品',hotel_policy:'酒店政策',supplier_rule:'供应商规则',operation_rule:'运营操作',destination:'目的地经验',case_learning:'历史案例',user_preference:'个人偏好'})[category]||'专业知识';
+function renderAssistantConversation(){
+  const panel=byId('assistantConversation');if(!panel)return;
+  const messages=assistantMessages.slice(-12);panel.innerHTML=messages.length?messages.map(message=>`<div class="assistant-message ${message.role==='user'?'user':'assistant'}"><small>${message.role==='user'?'你':'AI'} · ${escapeHtml(String(message.created_at||'').slice(0,16).replace('T',' '))}</small><span>${escapeHtml(message.content||'')}</span></div>`).join(''):'<div class="assistant-message empty">当前会话会记住日期口径、筛选条件和已确认的业务规则。</div>';
+  panel.scrollTop=panel.scrollHeight;
+}
+async function ensureAssistantConversation(){
+  if(!cloudReady||!currentUser||!supabaseClient)return false;
+  const savedId=localStorage.getItem(assistantConversationStorageKey());let data=null,error=null;
+  if(savedId){({data,error}=await supabaseClient.from('assistant_conversations').select('id').eq('id',savedId).eq('user_id',currentUser.id).maybeSingle());}
+  if(error)throw error;
+  if(!data){({data,error}=await supabaseClient.from('assistant_conversations').select('id').eq('user_id',currentUser.id).order('updated_at',{ascending:false}).limit(1).maybeSingle());if(error)throw error;}
+  if(!data){({data,error}=await supabaseClient.from('assistant_conversations').insert({user_id:currentUser.id,title:'AI 工作台'}).select('id').single());if(error)throw error;}
+  assistantConversationId=data.id;localStorage.setItem(assistantConversationStorageKey(),assistantConversationId);return true;
+}
+async function loadAssistantWorkspace(){
+  assistantWorkspaceAvailable=false;assistantMessages=[];assistantContext={};assistantKnowledge=[];renderAssistantConversation();renderKnowledgeList();
+  if(!cloudReady||!currentUser||!supabaseClient)return;
+  try{
+    await ensureAssistantConversation();
+    const [messagesResult,contextResult,knowledgeResult]=await Promise.all([
+      supabaseClient.from('assistant_messages').select('id,role,content,metadata,created_at').eq('conversation_id',assistantConversationId).order('created_at',{ascending:false}).limit(30),
+      supabaseClient.from('assistant_context').select('*').eq('conversation_id',assistantConversationId).maybeSingle(),
+      supabaseClient.from('assistant_knowledge').select('id,title,category,scope,content,source,status,version,updated_at').order('updated_at',{ascending:false}).limit(50)
+    ]);
+    if(messagesResult.error)throw messagesResult.error;if(contextResult.error)throw contextResult.error;if(knowledgeResult.error)throw knowledgeResult.error;
+    assistantMessages=(messagesResult.data||[]).reverse();assistantContext={...(contextResult.data||{}),...(contextResult.data?.context||{})};assistantKnowledge=knowledgeResult.data||[];assistantWorkspaceAvailable=true;renderAssistantConversation();renderKnowledgeList();
+  }catch(error){if(!['42P01','PGRST205'].includes(error?.code)&&error?.status!==404)console.warn('AI工作台扩展数据暂不可用',error.message);renderAssistantConversation();renderKnowledgeList();}
+}
+async function saveAssistantMessage(role,content,metadata={}){
+  if(!content)return;const record={role,content:String(content),metadata,created_at:new Date().toISOString()};assistantMessages=[...assistantMessages.slice(-29),record];renderAssistantConversation();
+  if(!assistantWorkspaceAvailable||!assistantConversationId||!currentUser||!supabaseClient)return;
+  const {error}=await supabaseClient.from('assistant_messages').insert({user_id:currentUser.id,conversation_id:assistantConversationId,role,content:String(content),metadata});if(error)console.warn('AI会话消息保存失败',error.message);
+}
+async function saveAssistantContext(next={}){
+  assistantContext={...assistantContext,...next};
+  if(!assistantWorkspaceAvailable||!assistantConversationId||!currentUser||!supabaseClient)return;
+  const {error}=await supabaseClient.from('assistant_context').upsert({conversation_id:assistantConversationId,user_id:currentUser.id,...assistantContext,context:assistantContext},{onConflict:'conversation_id'});if(error)console.warn('AI上下文保存失败',error.message);
+}
+function assistantModelContext(){return {context_state:assistantContext,history:assistantMessages.slice(-8).map(message=>({role:message.role,content:message.content}))};}
+function renderKnowledgeList(){
+  const panel=byId('knowledgeList');if(!panel)return;
+  if(!assistantKnowledge.length){panel.innerHTML='<span class="ai-status">暂无知识。保存后会先进入草稿，发布后 AI 才会检索使用。</span>';return;}
+  panel.innerHTML=assistantKnowledge.map(item=>`<article class="knowledge-card"><div class="knowledge-card-head"><span class="knowledge-card-title">${escapeHtml(item.title||'未命名知识')}</span><span class="knowledge-status ${escapeHtml(item.status||'draft')}">${assistantStatusText(item.status)}</span></div><small>${assistantKnowledgeCategoryText(item.category)} · ${escapeHtml(item.scope||'personal')} · ${escapeHtml(item.source||'用户提供')}</small><p>${escapeHtml(item.content||'')}</p><div class="knowledge-card-actions">${item.status==='draft'?`<button class="button quiet" data-knowledge-action="publish" data-knowledge-id="${escapeHtml(item.id)}">发布使用</button>`:''}${item.status==='published'?`<button class="button quiet" data-knowledge-action="archive" data-knowledge-id="${escapeHtml(item.id)}">标记废弃</button>`:''}</div></article>`).join('');
+}
+async function saveKnowledgeDraft(event){
+  event.preventDefault();const status=byId('knowledgeStatus');if(!currentUser||!supabaseClient){status.textContent='请先登录云端账户';status.className='ai-status error';return;}
+  const title=byId('knowledgeTitle').value.trim(),content=byId('knowledgeContent').value.trim();if(!title||!content){status.textContent='请填写标题和专业内容';status.className='ai-status error';return;}
+  const scopeText=byId('knowledgeScopeText').value.trim();const record={user_id:currentUser.id,title,category:byId('knowledgeCategory').value,scope:'personal',content,keywords:scopeText?scopeText.split(/[\s,，/]+/).filter(Boolean):[],source:byId('knowledgeSource').value.trim()||'用户提供',source_type:'manual',status:'draft',created_by:currentUser.id};
+  status.textContent='正在保存草稿…';status.className='ai-status';const {data,error}=await supabaseClient.from('assistant_knowledge').insert(record).select('id,title,category,scope,content,source,status,version,updated_at').single();if(error){status.textContent=`保存失败：${error.message}`;status.className='ai-status error';return;}
+  assistantKnowledge=[data,...assistantKnowledge];renderKnowledgeList();byId('knowledgeForm').reset();status.textContent='已保存为草稿，发布后 AI 才会使用';status.className='ai-status success';
+}
+async function updateKnowledgeStatus(id,statusValue){
+  if(!currentUser||!supabaseClient)return;const payload={status:statusValue,reviewed_at:statusValue==='published'?new Date().toISOString():null};const {error}=await supabaseClient.from('assistant_knowledge').update(payload).eq('id',id).eq('user_id',currentUser.id);if(error){window.alert(`知识状态更新失败：${error.message}`);return;}assistantKnowledge=assistantKnowledge.map(item=>item.id===id?{...item,...payload}:item);renderKnowledgeList();
+}
+ function aiValue(value){return value===null||value===undefined?'':String(value);}
 const escapeHtml=value=>aiValue(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 function renderAiDraft(){
   const panel=byId('aiDraftPanel');if(!panel||!aiDraft)return;const data=aiDraft.data||aiDraft;const order=data.order||{};const income=data.income||{};const items=[];if(data.intent==='order'){items.push(['业务类型',order.type==='flight'?'机票订单':'酒店订单'],['客户',order.customer],['预订人',order.booker],['下单日期',order.order_date],['入住/出发',order.service_date],['供应商',order.supplier],['房型/航班',order.product],['GMV',order.gmv?compactCurrency(order.gmv):'未识别'],['成本',order.cost?compactCurrency(order.cost):'未识别'],['付款状态',order.payment_status]);}else{items.push(['日期',income.date],['名称',income.name],['收款方',income.payer],['付款方',income.payee],['收入',income.amount?compactCurrency(income.amount):'¥0'],['支出',income.expense?compactCurrency(income.expense):'¥0'],['关联线索',income.search_text]);}byId('aiDraftIntent').textContent=aiIntentText(data.intent);byId('aiDraftSummary').innerHTML=items.map(([label,value])=>`<div><span>${label}</span><b>${value||'未识别'}</b></div>`).join('');byId('aiDraftJson').textContent=JSON.stringify(data,null,2);panel.hidden=false;}
 async function parseAiAccounting(){
   const text=byId('aiAccountingText').value.trim(),button=byId('aiParseButton'),status=byId('aiAccountingStatus');if(!text){status.textContent='请先输入一句话';status.className='ai-status error';return;}if(!aiSettings.enabled){status.textContent='请先在右侧启用模型配置';status.className='ai-status error';return;}button.disabled=true;button.textContent='识别中…';status.textContent='正在让模型整理字段…';status.className='ai-status';
-  try{const {data:sessionData}=await supabaseClient.auth.getSession();const response=await fetch(`${SUPABASE_URL}/functions/v1/ai-accounting`,{method:'POST',headers:{Authorization:`Bearer ${sessionData.session?.access_token||''}`,'Content-Type':'application/json'},body:JSON.stringify({text})});const result=await response.json();if(!response.ok)throw new Error(result.error||'AI识别失败');aiDraft=result;renderAiDraft();status.textContent=`已生成草稿 · ${aiIntentText(result.data?.intent)} · 请确认后填入表单`;status.className='ai-status success';}catch(error){status.textContent=error.message;status.className='ai-status error';}finally{button.disabled=false;button.textContent='交给 AI 处理';}
+  try{const {data:sessionData}=await supabaseClient.auth.getSession();const response=await fetch(`${SUPABASE_URL}/functions/v1/ai-accounting`,{method:'POST',headers:{Authorization:`Bearer ${sessionData.session?.access_token||''}`,'Content-Type':'application/json'},body:JSON.stringify({text,conversation_id:assistantConversationId,...assistantModelContext()})});const result=await response.json();if(!response.ok)throw new Error(result.error||'AI识别失败');aiDraft=result;renderAiDraft();status.textContent=`已生成草稿 · ${aiIntentText(result.data?.intent)} · 请确认后填入表单`;status.className='ai-status success';await saveAssistantMessage('assistant',`已生成${aiIntentText(result.data?.intent)}草稿，请确认后再填入表单。`,{intent:result.data?.intent||'unknown'});}catch(error){status.textContent=error.message;status.className='ai-status error';}finally{button.disabled=false;button.textContent='交给 AI 处理';}
+}
+function renderGeneralAssistant(result,model='模型回答'){
+  const panel=byId('analysisResult');if(!panel)return;const data=result?.data||result||{};const sources=Array.isArray(data.knowledge_sources)?data.knowledge_sources:[];panel.className='analysis-result';panel.hidden=false;panel.innerHTML=`<div class="analysis-answer"><span class="quality-smart-tag">${escapeHtml(model)}</span><p>${escapeHtml(data.answer||'暂时没有可回答的内容。')}</p></div>${sources.length?`<div class="analysis-scope"><strong>参考知识：</strong>${sources.map(source=>escapeHtml(source.title||'未命名知识')).join('、')}</div>`:''}${data.unsupported?'<div class="analysis-scope"><strong>能力边界：</strong>当前没有对应的实时工具，以上不是实时查询结果。</div>':''}`;
+}
+async function runGeneralAssistant(question){
+  const button=byId('aiParseButton'),status=byId('aiAccountingStatus');if(!aiSettings.enabled){status.textContent='请先在右侧启用模型配置';status.className='ai-status error';return;}button.disabled=true;button.textContent='思考中…';status.textContent='正在结合已发布知识和当前对话整理…';status.className='ai-status';
+  try{const {data:sessionData}=await supabaseClient.auth.getSession();const response=await fetch(`${SUPABASE_URL}/functions/v1/ai-accounting`,{method:'POST',headers:{Authorization:`Bearer ${sessionData.session?.access_token||''}`,'Content-Type':'application/json'},body:JSON.stringify({mode:'assistant',text:question,conversation_id:assistantConversationId,context_state:assistantContext,history:assistantMessages.slice(-8).map(message=>({role:message.role,content:message.content}))})});const result=await response.json();if(!response.ok)throw new Error(result.error||'AI回答失败');renderGeneralAssistant(result,`AI回答 · ${result.model||'模型'}`);await saveAssistantMessage('assistant',result.data?.answer||'暂时没有可回答的内容。',{intent:'general_assistance',knowledge_sources:result.data?.knowledge_sources||[]});status.textContent='回答完成；涉及实时数据时仍需接入对应工具。';status.className='ai-status success';}catch(error){status.textContent=error.message;status.className='ai-status error';}finally{button.disabled=false;button.textContent='交给 AI 处理';}
+}
+async function runAssistantChat(question){
+  const button=byId('aiParseButton'),status=byId('aiAccountingStatus');if(!aiSettings.enabled){status.textContent='请先在右侧启用模型配置';status.className='ai-status error';return;}button.disabled=true;button.textContent='处理中…';status.textContent='AI 正在判断任务并调用必要工具…';status.className='ai-status';
+  try{const {data:sessionData}=await supabaseClient.auth.getSession();const response=await fetch(`${SUPABASE_URL}/functions/v1/ai-accounting`,{method:'POST',headers:{Authorization:`Bearer ${sessionData.session?.access_token||''}`,'Content-Type':'application/json'},body:JSON.stringify({mode:'chat',text:question,conversation_id:assistantConversationId,...assistantModelContext()})});const result=await response.json();if(!response.ok)throw new Error(result.error||'AI处理失败');const data=result.data||{};if(data.draft){aiDraft={data:data.draft};renderAiDraft();}if(data.analysis){analysisResult=data.analysis;renderAnalysisResult(data.analysis,`确定性工具 · ${result.model||'模型'}`);const summaryCall=(result.tool_calls||[]).find(call=>call.name==='summarize_business');if(summaryCall?.arguments)await saveAssistantContext({date_field:summaryCall.arguments.date_field,period_start:summaryCall.arguments.start||null,period_end:summaryCall.arguments.end||null,order_type:summaryCall.arguments.type||'all',city:summaryCall.arguments.location||'',supplier:summaryCall.arguments.supplier||'',booker:summaryCall.arguments.booker||''});}if(!data.analysis&&!data.draft)renderGeneralAssistant(result,`AI回答 · ${result.model||'模型'}`);const answer=data.analysis?.answer||data.answer||(data.draft?`已生成${aiIntentText(data.draft.intent)}草稿，请确认后再填入表单。`:'当前没有可回答的内容。');await saveAssistantMessage('assistant',answer,{intent:data.analysis?'business_query':data.draft?'accounting_draft':'general_assistance',tool_calls:result.tool_calls||[]});status.textContent=data.analysis?'统计完成，金额和口径来自确定性工具。':data.draft?'已生成草稿，请确认后再填入表单。':'回答完成；涉及实时信息时仍需接入对应工具。';status.className='ai-status success';}catch(error){status.textContent=error.message;status.className='ai-status error';}finally{button.disabled=false;button.textContent='交给 AI 处理';}
 }
 function fillFromAiDraft(){
   if(!aiDraft)return;const data=aiDraft.data||aiDraft,order=data.order||{},income=data.income||{};
@@ -284,7 +357,7 @@ async function handleSession(session) {
     return;
   }
   showAuthenticatedUI(true); byId('currentUserEmail').textContent=currentUser.email || ''; setSyncStatus('正在读取云端数据…', 'syncing');
-  try { await loadCloudData(); await loadQualityActions(); await setupRealtime(); await loadAiSettings(); } catch (error) { cloudReady=false; setSyncStatus(`云端连接失败：${error.message}`, 'sync-error'); window.alert(`云端数据库还未准备好或连接失败：${error.message}\n\n请先在 Supabase SQL Editor 执行项目里的 supabase-schema.sql。`); renderAll(); }
+  try { await loadCloudData(); await loadQualityActions(); await setupRealtime(); await loadAiSettings(); await loadAssistantWorkspace(); } catch (error) { cloudReady=false; setSyncStatus(`云端连接失败：${error.message}`, 'sync-error'); window.alert(`云端数据库还未准备好或连接失败：${error.message}\n\n请先在 Supabase SQL Editor 执行项目里的 supabase-schema.sql。`); renderAll(); }
 }
 async function signIn() {
   if (!supabaseClient) { setAuthStatus('Supabase 客户端未加载，请检查网络后刷新。', 'error'); return; }
@@ -500,10 +573,10 @@ function renderAnalysisResult(result,source='确定性统计'){
 }
 async function runBusinessAnalysis(questionOverride=''){
   const question=(questionOverride||byId('aiAccountingText').value).trim(),button=byId('aiParseButton'),status=byId('aiAccountingStatus');if(!question){status.textContent='请先输入一个经营问题。';status.className='ai-status error';return;}
-  const localResult=buildBusinessAnalysis(question);analysisResult=localResult;renderAnalysisResult(localResult);status.textContent='已完成确定性统计；金额和口径来自当前台账。';status.className='ai-status success';
+  const localResult=buildBusinessAnalysis(question);analysisResult=localResult;renderAnalysisResult(localResult);status.textContent='已完成确定性统计；金额和口径来自当前台账。';status.className='ai-status success';await saveAssistantContext({date_field:localResult.scope.dateField==='serviceDate'?'service_date':'order_date',period_start:localResult.scope.start||null,period_end:localResult.scope.end||null,order_type:localResult.type||'all',city:localResult.dimension?.field==='location'?localResult.dimension.value:'',supplier:localResult.dimension?.field==='supplier'?localResult.dimension.value:'',booker:localResult.dimension?.field==='booker'?localResult.dimension.value:'',pending_question:''});
   if(!aiSettings.enabled||!supabaseClient||!currentUser){status.textContent+=' 启用模型配置后可生成 AI 文字说明。';return;}
   button.disabled=true;button.textContent='解释中…';
-  try{const {data:sessionData}=await supabaseClient.auth.getSession();const response=await fetch(`${SUPABASE_URL}/functions/v1/ai-accounting`,{method:'POST',headers:{Authorization:`Bearer ${sessionData.session?.access_token||''}`,'Content-Type':'application/json'},body:JSON.stringify({mode:'analysis',text:question,context:{scope:localResult.scopeLabel,date_field:localResult.dateFieldLabel,type:localResult.type,condition:localResult.condition,summary:localResult.summary,ranking:localResult.ranking,top_orders:localResult.topOrders}})});const result=await response.json();if(!response.ok)throw new Error(result.error||'AI经营解释失败');if(result.data?.answer){localResult.answer=result.data.answer;analysisResult=localResult;renderAnalysisResult(localResult,`AI说明 · ${result.model||'模型'}`);status.textContent='统计完成，AI已基于确定性结果生成说明。';}}
+  try{const {data:sessionData}=await supabaseClient.auth.getSession();const response=await fetch(`${SUPABASE_URL}/functions/v1/ai-accounting`,{method:'POST',headers:{Authorization:`Bearer ${sessionData.session?.access_token||''}`,'Content-Type':'application/json'},body:JSON.stringify({mode:'analysis',text:question,conversation_id:assistantConversationId,...assistantModelContext(),context:{scope:localResult.scopeLabel,date_field:localResult.dateFieldLabel,type:localResult.type,condition:localResult.condition,summary:localResult.summary,ranking:localResult.ranking,top_orders:localResult.topOrders}})});const result=await response.json();if(!response.ok)throw new Error(result.error||'AI经营解释失败');if(result.data?.answer){localResult.answer=result.data.answer;analysisResult=localResult;renderAnalysisResult(localResult,`AI说明 · ${result.model||'模型'}`);status.textContent='统计完成，AI已基于确定性结果生成说明。';await saveAssistantMessage('assistant',result.data.answer,{intent:'business_query',scope:localResult.scopeLabel,date_field:localResult.dateFieldLabel});}}
   catch(error){status.textContent=`统计已完成，但 AI 说明失败：${error.message}`;status.className='ai-status error';}
   finally{button.disabled=false;button.textContent='交给 AI 处理';}
 }
@@ -512,12 +585,13 @@ function isBusinessAnalysisQuestion(text){
   return /多少钱|多少金额|多少利润|gmv|利润率|订单数|房晚|票数|待收款|待返佣|趋势|排行|排名|哪个|哪些|找出|比较|同比|环比|本月|上月|今年|去年/.test(query)
     && !/订房|预订|下单|出票|机票订单|酒店订单|收到|收款|返佣到账|付给|支出|记账|登记/.test(query);
 }
+function isAccountingCaptureQuestion(text){return /记账|登记|收到|返佣|收款|支出|新增订单|订房|预订|下单|出票|付款|支付|佣金|关联订单|填入订单/.test(text);}
 async function runUnifiedAi(){
   const text=byId('aiAccountingText').value.trim();
   if(!text){byId('aiAccountingStatus').textContent='请先输入你要做的事情。';byId('aiAccountingStatus').className='ai-status error';return;}
+  await saveAssistantMessage('user',text);
   byId('aiDraftPanel').hidden=true;byId('analysisResult').hidden=true;
-  if(isBusinessAnalysisQuestion(text))return runBusinessAnalysis(text);
-  return parseAiAccounting();
+  return runAssistantChat(text);
 }
 function dataCleaningEntries(){
   const entries=[];
@@ -792,9 +866,11 @@ byId('dashboardDateField').addEventListener('change',e=>{dashboardDateField=e.ta
 byId('authForm').addEventListener('submit',event=>{event.preventDefault();signIn();});
 byId('authSignUp').addEventListener('click',()=>signUp());
 byId('aiSettingsForm').addEventListener('submit',event=>{event.preventDefault();saveAiSettings();});
-byId('aiProvider').addEventListener('change',event=>{if(event.target.value==='deepseek'){if(!byId('aiBaseUrl').value||byId('aiBaseUrl').value.includes('openai.com'))byId('aiBaseUrl').value='https://api.deepseek.com/v1';if(!byId('aiModel').value||byId('aiModel').value==='gpt-4o-mini')byId('aiModel').value='deepseek-chat';}else if(event.target.value==='openai-compatible'&&byId('aiBaseUrl').value.includes('deepseek.com')){byId('aiBaseUrl').value='https://api.openai.com/v1';if(byId('aiModel').value==='deepseek-chat')byId('aiModel').value='gpt-4o-mini';}});
+byId('aiProvider').addEventListener('change',event=>{if(event.target.value==='deepseek'){if(!byId('aiBaseUrl').value||byId('aiBaseUrl').value.includes('openai.com'))byId('aiBaseUrl').value='https://api.deepseek.com';if(!byId('aiModel').value||byId('aiModel').value==='gpt-4o-mini')byId('aiModel').value='deepseek-flash';}else if(event.target.value==='openai-compatible'&&byId('aiBaseUrl').value.includes('deepseek.com')){byId('aiBaseUrl').value='https://api.openai.com/v1';if(byId('aiModel').value==='deepseek-flash')byId('aiModel').value='gpt-4o-mini';}});
 byId('aiParseButton').addEventListener('click',runUnifiedAi);
 byId('aiFillButton').addEventListener('click',fillFromAiDraft);
+byId('knowledgeForm').addEventListener('submit',saveKnowledgeDraft);
+document.addEventListener('click',event=>{const action=event.target.closest('[data-knowledge-action]');if(!action)return;updateKnowledgeStatus(action.dataset.knowledgeId,action.dataset.knowledgeAction==='publish'?'published':'archived');});
 byId('scanDataQuality').addEventListener('click',()=>{byId('aiCleaningResults').innerHTML='<span class="ai-status">正在扫描订单字段和重复记录…</span>';setTimeout(renderDataCleaning,0);});
 byId('previewCleanup').addEventListener('click',renderCleanupPreview);
 document.addEventListener('click',event=>{if(event.target.closest('[data-confirm-cleanup]'))confirmCleanup();});

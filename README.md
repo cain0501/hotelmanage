@@ -9,6 +9,7 @@
 - 数据待办：待收款、零成本、资料缺失
 - Excel 订单导入
 - 电脑与手机共享同一份云端数据
+- AI 工作台会话、上下文和专业酒店知识库
 
 ## 使用方式
 
@@ -29,10 +30,11 @@
 
 ## AI 一句话记账
 
-1. 在 Supabase SQL Editor 执行最新的 `supabase-schema.sql`，新增 `ai_settings` 表。
+1. 在 Supabase SQL Editor 执行最新的 `supabase-schema.sql`，会一并创建 AI 设置、会话、上下文、待确认任务和专业知识库表。
 2. 部署 `supabase/functions/ai-accounting` Edge Function。
 3. 在 Supabase Edge Function Secrets 中设置 `AI_API_KEY`，不要把 API Key 写进前端或 GitHub。
-4. 网站登录后打开“AI一句话记账”，填写接口地址、模型名称并启用。
-5. 输入自然语言，点击“识别并生成草稿”，确认识别结果后再填入订单或其它收入表单保存。
+4. 网站登录后打开“AI 工作台”，填写接口地址、模型名称并启用。
+5. 输入自然语言，AI 会区分经营查询、记账请求和一般/专业知识问题；涉及保存时仍先生成草稿。
+6. 在“专业知识库”中先保存酒店规则草稿，点击“发布使用”后 AI 才会检索该知识。
 
 默认按 OpenAI 兼容接口调用，DeepSeek 可填写 `https://api.deepseek.com/v1`。模型配置只保存接口地址、模型名和开关，密钥由 Edge Function Secret 管理。
