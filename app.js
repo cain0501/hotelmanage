@@ -41,6 +41,7 @@ let supplierFilter = '';
 let qualityIssueFilter = 'all';
 let qualityTypeFilter = 'all';
 let qualitySearch = '';
+let qualityStatusFilter = 'open';
 const AI_SETTINGS_STORAGE_KEY='qizhang-ai-settings-draft';
 let aiSettings = { provider:'openai-compatible', baseUrl:'https://api.openai.com/v1', model:'gpt-4o-mini', temperature:0.1, enabled:false };
 let aiDraft = null;
@@ -66,8 +67,30 @@ let currentUser = null;
 let realtimeChannel = null;
 let cloudReady = false;
 let cloudBusy = false;
+let qualityActions = {};
+let qualityActionsCloudAvailable = false;
 const saveLocalOrders = () => localStorage.setItem('qizhang-orders', JSON.stringify(orders));
 const saveLocalOtherIncomes = () => localStorage.setItem('qizhang-other-income', JSON.stringify(otherIncomes));
+const qualityActionsStorageKey = () => `qizhang-quality-actions-${currentUser?.id || 'guest'}`;
+const saveLocalQualityActions = () => localStorage.setItem(qualityActionsStorageKey(), JSON.stringify(qualityActions));
+const readLocalQualityActions = () => { try { const value=JSON.parse(localStorage.getItem(qualityActionsStorageKey()) || '{}'); return value && typeof value==='object' ? value : {}; } catch { return {}; } };
+const isMissingQualityActionsTable = error => ['42P01','PGRST205'].includes(error?.code) || error?.status===404;
+const qualityActionKey = (order,kind) => `${order.id}::${kind}`;
+async function loadQualityActions(){
+  qualityActions=readLocalQualityActions();qualityActionsCloudAvailable=false;
+  if(!cloudReady||!currentUser||!supabaseClient){renderQuality();return;}
+  const {data,error}=await supabaseClient.from('quality_issue_actions').select('id,order_id,issue_kind,status,updated_at').order('updated_at',{ascending:false});
+  if(error){if(!isMissingQualityActionsTable(error))console.warn('Quality actions unavailable',error.message);renderQuality();return;}
+  qualityActionsCloudAvailable=true;
+  if(data?.length){qualityActions=Object.fromEntries(data.map(row=>[row.id,{status:row.status,updatedAt:row.updated_at||''}]));saveLocalQualityActions();}
+  else if(Object.keys(qualityActions).length){const rows=Object.entries(qualityActions).map(([id,action])=>{const [orderId,...kindParts]=id.split('::');return {id,user_id:currentUser.id,order_id:orderId,issue_kind:kindParts.join('::'),status:action.status,updated_at:action.updatedAt||new Date().toISOString()};});const result=await supabaseClient.from('quality_issue_actions').upsert(rows,{onConflict:'user_id,id'});if(result.error)console.warn('Quality actions migration unavailable',result.error.message);}
+  renderQuality();
+}
+async function saveQualityActionToCloud(id,orderId,kind,status,updatedAt){
+  if(!qualityActionsCloudAvailable||!cloudReady||!currentUser)return;
+  const {error}=await supabaseClient.from('quality_issue_actions').upsert({id,user_id:currentUser.id,order_id:orderId,issue_kind:kind,status,updated_at:updatedAt},{onConflict:'user_id,id'});
+  if(error)throw error;
+}
 const saveOrdersBatch = async () => {
   saveLocalOrders();
   if (!cloudReady || !currentUser) return;
@@ -255,12 +278,12 @@ async function setupRealtime() {
 async function handleSession(session) {
   currentUser = session?.user || null;
   if (!currentUser) {
-    cloudReady=false; orders=[]; otherIncomes=[]; showAuthenticatedUI(false); setAuthStatus('');
+    cloudReady=false; qualityActions={}; qualityActionsCloudAvailable=false; orders=[]; otherIncomes=[]; showAuthenticatedUI(false); setAuthStatus('');
     if (realtimeChannel && supabaseClient) { await supabaseClient.removeChannel(realtimeChannel); realtimeChannel=null; }
     return;
   }
   showAuthenticatedUI(true); byId('currentUserEmail').textContent=currentUser.email || ''; setSyncStatus('正在读取云端数据…', 'syncing');
-  try { await loadCloudData(); await setupRealtime(); await loadAiSettings(); } catch (error) { cloudReady=false; setSyncStatus(`云端连接失败：${error.message}`, 'sync-error'); window.alert(`云端数据库还未准备好或连接失败：${error.message}\n\n请先在 Supabase SQL Editor 执行项目里的 supabase-schema.sql。`); renderAll(); }
+  try { await loadCloudData(); await loadQualityActions(); await setupRealtime(); await loadAiSettings(); } catch (error) { cloudReady=false; setSyncStatus(`云端连接失败：${error.message}`, 'sync-error'); window.alert(`云端数据库还未准备好或连接失败：${error.message}\n\n请先在 Supabase SQL Editor 执行项目里的 supabase-schema.sql。`); renderAll(); }
 }
 async function signIn() {
   if (!supabaseClient) { setAuthStatus('Supabase 客户端未加载，请检查网络后刷新。', 'error'); return; }
@@ -385,6 +408,23 @@ function renderLedger() {
 function renderOtherIncome(){const total=otherIncomes.reduce((n,item)=>n+Number(item.amount||0),0),expense=otherIncomes.reduce((n,item)=>n+Number(item.expense||0),0);byId('otherIncomeSummary').innerHTML=`<article><p>其它收入</p><strong class="profit-positive">${compactCurrency(total)}</strong></article><article><p>其它支出</p><strong class="profit-negative">${compactCurrency(expense)}</strong></article><article><p>净额</p><strong>${compactCurrency(total-expense)}</strong></article>`;byId('otherIncomeTable').innerHTML=otherIncomes.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(item=>{const linked=incomeOrderIds(item).map(id=>orders.find(order=>order.id===id)).filter(Boolean);const net=Number(item.amount||0)-Number(item.expense||0);return `<tr><td>${dateFmt(item.date)}</td><td><strong>${item.name}</strong></td><td>${item.payer||'—'}</td><td>${item.payee||'—'}</td><td>${linked.length?`<div class="income-order-links">${linked.map(order=>`<span class="order-code">${orderCode(order)}</span>`).join('')}</div><small>${linked.length} 笔订单</small>`:'未关联订单'}</td><td class="money">${compactCurrency(item.amount)}</td><td class="money profit-negative">${compactCurrency(item.expense)}</td><td class="money ${net>=0?'profit-positive':'profit-negative'}">${compactCurrency(net)}</td><td class="row-actions"><button class="button quiet" data-edit-income="${item.id}" aria-label="编辑">编辑</button><button class="button quiet danger" data-delete-income="${item.id}" aria-label="删除">删除</button></td></tr>`}).join('')||'<tr><td colspan="9"><div class="empty-state">还没有其它收入记录</div></td></tr>';}
 const qualityKindLabels={missing:'资料缺失',payment:'待收款 / 待返佣',cost:'成本异常',paymentStatus:'付款状态异常',duplicate:'疑似重复',extension:'续住关联',review:'需要核对'};
 const qualityKindDescriptions={missing:'补齐客户、日期、供应商、房型、GMV、成本或开票公司等字段。',payment:'确认客户实收金额，或补登记平台返佣到账。',cost:'确认是否为赠送、未结算，或遗漏成本。',paymentStatus:'核对订单当前付款状态和收款记录。',duplicate:'核对确认号、客户、酒店和入住日期，避免重复记账。',extension:'同确认号但入住日期相差一天，建议保留为独立续住订单。',review:'确认订单信息差异是否符合实际业务。'};
+const qualityActionLabels={open:'待处理',processed:'已处理',ignored:'已忽略'};
+function qualityActionStatus(order,kind){return qualityActions[qualityActionKey(order,kind)]?.status||'open';}
+function qualityEvidence(order,kind,detail){
+  if(kind==='payment')return isCommissionOrder(order)?`预计返佣 ${compactCurrency(commissionExpected(order))} · 已到账 ${compactCurrency(commissionReceived(order))} · 待到账 ${compactCurrency(commissionOutstanding(order))}`:`GMV ${compactCurrency(order.gmv)} · 已收 ${compactCurrency(order.received)} · 待收 ${compactCurrency(Math.max(0,Number(order.gmv||0)-Number(order.received||0)))}`;
+  if(kind==='cost')return `GMV ${compactCurrency(order.gmv)} · 成本 ${compactCurrency(order.cost)}`;
+  if(kind==='duplicate'||kind==='extension'||kind==='review')return `${order.confirmation?'确认号 '+order.confirmation+' · ':''}${order.serviceDate?'业务日期 '+order.serviceDate+' · ':''}${detail}`;
+  return detail;
+}
+function qualitySuggestion(order,kind){
+  if(kind==='payment')return isCommissionOrder(order)?'建议登记平台返佣到账金额；不要把客人前台付款当作我方收款。':'建议补登记客户本次收款，或确认订单是否应标记为退款/取消。';
+  if(kind==='cost')return '建议核对供应商结算单；若确实无需我方支付，请使用客人前台付款/平台返佣结算模式。';
+  if(kind==='missing')return '建议打开订单补齐缺失字段后再纳入经营分析。';
+  if(kind==='duplicate')return '建议打开两笔订单比对；确认重复后人工处理，系统不会自动删除。';
+  if(kind==='extension')return '这是续住关联提示，建议保留为两笔独立订单，分别核对日期、房晚和成本。';
+  if(kind==='paymentStatus')return '建议核对付款状态、已收金额和资金流水是否一致。';
+  return '建议打开订单核对确认号、客户、酒店和业务日期。';
+}
 function qualityEntries(){
   const grouped=new Map();
   const add=(order,kind,detail)=>{const key=`${order.id}|${kind}`;if(!grouped.has(key))grouped.set(key,{order,kind,details:[]});const entry=grouped.get(key);if(detail&&!entry.details.includes(detail))entry.details.push(detail);};
@@ -394,14 +434,27 @@ function qualityEntries(){
 }
 function filteredQualityEntries(){
   const query=qualitySearch.trim().toLowerCase();
-  return qualityEntries().filter(({order,kind,detail})=>(qualityIssueFilter==='all'||kind===qualityIssueFilter)&&(qualityTypeFilter==='all'||order.type===qualityTypeFilter)&&(!query||`${orderCode(order)} ${order.id} ${order.customer||''} ${order.booker||''} ${order.supplier||''} ${order.confirmation||''} ${order.location||''} ${detail}`.toLowerCase().includes(query)));
+  return qualityEntries().filter(({order,kind,detail})=>{const status=qualityActionStatus(order,kind);return (qualityIssueFilter==='all'||kind===qualityIssueFilter)&&(qualityStatusFilter==='all'||status===qualityStatusFilter)&&(qualityTypeFilter==='all'||order.type===qualityTypeFilter)&&(!query||`${orderCode(order)} ${order.id} ${order.customer||''} ${order.booker||''} ${order.supplier||''} ${order.confirmation||''} ${order.location||''} ${detail}`.toLowerCase().includes(query));});
+}
+async function setQualityAction(orderId,kind,status){
+  const order=orders.find(item=>item.id===orderId);if(!order)return;
+  const id=qualityActionKey(order,kind),previous=qualityActions[id];
+  if(status==='open')delete qualityActions[id];else qualityActions[id]={status,updatedAt:new Date().toISOString()};
+  saveLocalQualityActions();renderQuality();
+  try{
+    if(status==='open'&&qualityActionsCloudAvailable&&cloudReady&&currentUser){const {error}=await supabaseClient.from('quality_issue_actions').delete().eq('id',id);if(error)throw error;}
+    else if(status!=='open')await saveQualityActionToCloud(id,order.id,kind,status,qualityActions[id].updatedAt);
+    setSyncStatus(qualityActionsCloudAvailable?'异常处理状态已同步':'异常处理状态已保存到本机',qualityActionsCloudAvailable?'synced':'sync-error');
+  }catch(error){
+    if(previous)qualityActions[id]=previous;else delete qualityActions[id];saveLocalQualityActions();renderQuality();setSyncStatus(`异常处理状态同步失败：${error.message}`,'sync-error');window.alert(`异常处理状态保存失败，已恢复原状态：${error.message}`);
+  }
 }
 function renderQuality() {
-  const entries=filteredQualityEntries();
-  byId('issueCount').textContent=qualityEntries().length;
-  byId('qualityFilterSummary').innerHTML=`当前显示 <strong>${entries.length}</strong> 条待办 · 共 <strong>${qualityEntries().length}</strong> 条可核对记录`;
+  const allEntries=qualityEntries(),entries=filteredQualityEntries(),openCount=allEntries.filter(entry=>qualityActionStatus(entry.order,entry.kind)==='open').length;
+  byId('issueCount').textContent=openCount;
+  byId('qualityFilterSummary').innerHTML=`当前显示 <strong>${entries.length}</strong> 条 · 待处理 <strong>${openCount}</strong> 条 · 全部异常 <strong>${allEntries.length}</strong> 条`;
   const groupOrder=['payment','cost','missing','paymentStatus','duplicate','extension','review'];
-  byId('issueGrid').innerHTML=groupOrder.filter(kind=>entries.some(entry=>entry.kind===kind)).map(kind=>{const list=entries.filter(entry=>entry.kind===kind);return `<article class="issue-card"><strong class="issue-count">${list.length}</strong><h3>${qualityKindLabels[kind]}</h3><p>${qualityKindDescriptions[kind]}</p><div class="quality-issue-list">${list.map(({order,detail})=>`<button class="quality-issue-row" data-detail="${escapeHtml(order.id)}"><b>${escapeHtml(orderCode(order))}</b><span>${escapeHtml(order.customer||'未填写客户')} · ${escapeHtml(order.supplier||'未填写供应商')}</span><small>${escapeHtml(detail)}${order.confirmation?` · 确认号 ${escapeHtml(order.confirmation)}`:''}</small></button>`).join('')}</div></article>`}).join('')||'<div class="empty-state">当前筛选下暂无待办问题</div>';
+  byId('issueGrid').innerHTML=groupOrder.filter(kind=>entries.some(entry=>entry.kind===kind)).map(kind=>{const list=entries.filter(entry=>entry.kind===kind);return `<article class="issue-card"><strong class="issue-count">${list.length}</strong><h3>${qualityKindLabels[kind]}</h3><p>${qualityKindDescriptions[kind]}</p><div class="quality-issue-list">${list.map(({order,detail})=>{const status=qualityActionStatus(order,kind),nextAction=status==='open'?'processed':'open';return `<div class="quality-issue-row"><div class="quality-issue-head"><div><b>${escapeHtml(orderCode(order))}</b><span>${escapeHtml(order.customer||'未填写客户')} · ${escapeHtml(order.supplier||'未填写供应商')}</span></div><span class="quality-smart-tag">智能建议</span></div><small class="quality-state ${status}">${qualityActionLabels[status]}</small><small class="quality-evidence">证据：${escapeHtml(qualityEvidence(order,kind,detail))}</small><small class="quality-suggestion">建议：${escapeHtml(qualitySuggestion(order,kind))}</small><div class="quality-row-actions"><button class="button quiet" data-detail="${escapeHtml(order.id)}">打开订单</button><button class="button quiet" data-quality-action="${nextAction}" data-quality-order="${escapeHtml(order.id)}" data-quality-kind="${escapeHtml(kind)}">${status==='open'?'标记已处理':'恢复待处理'}</button>${status==='open'?'<button class="button quiet" data-quality-action="ignored" data-quality-order="'+escapeHtml(order.id)+'" data-quality-kind="'+escapeHtml(kind)+'">忽略本次</button>':''}</div></div>`}).join('')}</div></article>`}).join('')||'<div class="empty-state">当前筛选下暂无待办问题</div>';
 }
 function dataCleaningEntries(){
   const entries=[];
@@ -549,6 +602,7 @@ async function importExcelFixed(file){if(!window.XLSX){window.alert('Excel 解�
 function openEditOrder(id){const o=orders.find(order=>order.id===id);if(!o)return;byId('detailDialog').close();byId('orderForm').dataset.editId=id;byId('orderForm').dataset.saving='false';byId('formKicker').textContent=`EDIT ORDER · ${id}`;byId('formHeading').textContent='编辑订单';byId('formSubmit').disabled=false;byId('formSubmit').textContent='保存修改';setOrderType(o.type);byId('orderStatus').value=o.status|| (o.type==='hotel'?'booked':'pending');byId('customer').value=o.customer||'';byId('booker').value=o.booker||'';byId('orderDate').value=o.orderDate||o.serviceDate||today;byId('serviceDate').value=o.serviceDate||today;byId('confirmation').value=o.confirmation||'';byId('location').value=o.location||'';byId('supplier').value=o.supplier||'';byId('product').value=o.product||'';byId('rooms').value=o.rooms||1;byId('nights').value=o.nights||1;byId('tickets').value=o.tickets||1;byId('gmv').value=o.gmv||0;byId('cost').value=o.cost||0;byId('settlementMode').value=settlementMode(o);byId('guestPaymentTo').value=o.guestPaymentTo||'';byId('commissionPlatform').value=o.commissionPlatform||'';byId('commissionExpected').value=commissionExpected(o)||'';byId('commissionReceived').value=commissionReceived(o)||'';byId('commissionStatus').value=commissionStatus(o);byId('commissionReceivedDate').value=o.commissionReceivedDate||'';byId('directCost').value=directCost(o)||'';byId('paymentStatus').value=payment(o);byId('paymentPlatform').value=o.paymentPlatform||'';byId('received').value=o.received||0;byId('invoiceStatus').value=invoiceStatus(o);byId('invoiceCompany').value=o.invoiceCompany||'';syncSettlementFields();refreshFormPreview();byId('orderDialog').showModal();}
 
 document.addEventListener('click', event=>{
+  const qualityAction=event.target.closest('[data-quality-action]'); if(qualityAction){event.preventDefault();event.stopImmediatePropagation();setQualityAction(qualityAction.dataset.qualityOrder,qualityAction.dataset.qualityKind,qualityAction.dataset.qualityAction);return;}
   const nav=event.target.closest('[data-view]'); if(nav)showView(nav.dataset.view);
   const go=event.target.closest('[data-go]'); if(go)showView(go.dataset.go);
   const detail=event.target.closest('[data-detail]'); if(detail && !detail.closest('#orderTable') && !detail.closest('#mobileOrderList'))openDetails(detail.dataset.detail);
@@ -584,9 +638,10 @@ byId('supplierFilter').addEventListener('input',e=>{supplierFilter=e.target.valu
 byId('applyFilters').addEventListener('click',()=>{dateField=byId('dateField').value;dateStart=byId('dateStart').value;dateEnd=byId('dateEnd').value;activeType=byId('typeSelect').value;statusFilter=byId('statusFilter').value;paymentFilter=byId('paymentFilter').value;invoiceFilter=byId('invoiceFilter').value;locationFilter=byId('locationFilter').value.trim();supplierFilter=byId('supplierFilter').value.trim();searchTerm=byId('orderSearch').value.trim();orderPage=1;renderOrders();byId('applyFilters').classList.add('filter-applied');setTimeout(()=>byId('applyFilters').classList.remove('filter-applied'),450);});
 byId('clearFilters').addEventListener('click',()=>{activeType='all';dateField='orderDate';dateStart='';dateEnd='';statusFilter='all';paymentFilter='all';invoiceFilter='all';locationFilter='';supplierFilter='';searchTerm='';orderPage=1;byId('typeSelect').value='all';byId('dateField').value='orderDate';byId('dateStart').value='';byId('dateEnd').value='';byId('paymentFilter').value='all';byId('invoiceFilter').value='all';byId('locationFilter').value='';byId('supplierFilter').value='';byId('orderSearch').value='';updateStatusOptions();renderOrders();});
 byId('qualityIssueFilter').addEventListener('change',event=>{qualityIssueFilter=event.target.value;renderQuality();});
+byId('qualityStatusFilter').addEventListener('change',event=>{qualityStatusFilter=event.target.value;renderQuality();});
 byId('qualityTypeFilter').addEventListener('change',event=>{qualityTypeFilter=event.target.value;renderQuality();});
 byId('qualitySearch').addEventListener('input',event=>{qualitySearch=event.target.value;renderQuality();});
-byId('clearQualityFilters').addEventListener('click',()=>{qualityIssueFilter='all';qualityTypeFilter='all';qualitySearch='';byId('qualityIssueFilter').value='all';byId('qualityTypeFilter').value='all';byId('qualitySearch').value='';renderQuality();});
+byId('clearQualityFilters').addEventListener('click',()=>{qualityIssueFilter='all';qualityStatusFilter='open';qualityTypeFilter='all';qualitySearch='';byId('qualityIssueFilter').value='all';byId('qualityStatusFilter').value='open';byId('qualityTypeFilter').value='all';byId('qualitySearch').value='';renderQuality();});
 ['gmv','cost','rooms','nights','tickets'].forEach(id=>byId(id).addEventListener('input',refreshFormPreview));
 byId('settlementMode').addEventListener('change',syncSettlementFields);
 ['commissionExpected','commissionReceived','directCost'].forEach(id=>byId(id).addEventListener('input',refreshFormPreview));

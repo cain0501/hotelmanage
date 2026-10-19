@@ -68,6 +68,16 @@ create table if not exists public.ai_settings (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.quality_issue_actions (
+  id text not null,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  order_id text not null,
+  issue_kind text not null,
+  status text not null default 'open' check (status in ('open', 'processed', 'ignored')),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, id)
+);
+
 -- 对已经创建过但字段不完整的旧表补齐字段；重复执行不会报错。
 alter table public.orders add column if not exists user_id uuid references auth.users(id) on delete cascade;
 alter table public.orders add column if not exists order_code text;
@@ -125,9 +135,20 @@ create policy "ai_settings_insert_own" on public.ai_settings for insert to authe
 create policy "ai_settings_update_own" on public.ai_settings for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy "ai_settings_delete_own" on public.ai_settings for delete to authenticated using (user_id = auth.uid());
 
+alter table public.quality_issue_actions enable row level security;
+drop policy if exists "quality_issue_actions_select_own" on public.quality_issue_actions;
+drop policy if exists "quality_issue_actions_insert_own" on public.quality_issue_actions;
+drop policy if exists "quality_issue_actions_update_own" on public.quality_issue_actions;
+drop policy if exists "quality_issue_actions_delete_own" on public.quality_issue_actions;
+create policy "quality_issue_actions_select_own" on public.quality_issue_actions for select to authenticated using (user_id = auth.uid());
+create policy "quality_issue_actions_insert_own" on public.quality_issue_actions for insert to authenticated with check (user_id = auth.uid());
+create policy "quality_issue_actions_update_own" on public.quality_issue_actions for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "quality_issue_actions_delete_own" on public.quality_issue_actions for delete to authenticated using (user_id = auth.uid());
+
 create index if not exists orders_user_order_date_idx on public.orders (user_id, order_date desc);
 create index if not exists orders_user_service_date_idx on public.orders (user_id, service_date desc);
 create index if not exists other_income_user_date_idx on public.other_income (user_id, income_date desc);
+create index if not exists quality_issue_actions_user_updated_idx on public.quality_issue_actions (user_id, updated_at desc);
 create unique index if not exists orders_user_id_id_key on public.orders (user_id, id);
 create unique index if not exists other_income_user_id_id_key on public.other_income (user_id, id);
 
@@ -169,6 +190,8 @@ drop trigger if exists other_income_set_updated_at on public.other_income;
 create trigger other_income_set_updated_at before update on public.other_income for each row execute function public.set_updated_at();
 drop trigger if exists ai_settings_set_updated_at on public.ai_settings;
 create trigger ai_settings_set_updated_at before update on public.ai_settings for each row execute function public.set_updated_at();
+drop trigger if exists quality_issue_actions_set_updated_at on public.quality_issue_actions;
+create trigger quality_issue_actions_set_updated_at before update on public.quality_issue_actions for each row execute function public.set_updated_at();
 
 -- 开启跨设备实时刷新；重复执行时忽略“已存在于 publication”的提示。
 do $$
@@ -179,6 +202,10 @@ begin
   end;
   begin
     alter publication supabase_realtime add table public.other_income;
+  exception when duplicate_object then null;
+  end;
+  begin
+    alter publication supabase_realtime add table public.quality_issue_actions;
   exception when duplicate_object then null;
   end;
 end;

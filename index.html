@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261019-20" />
+    <link rel="stylesheet" href="styles.css?v=20261019-21" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -139,7 +139,7 @@
       [hidden]{display:none!important}
       @media(max-width:800px){.cleanup-form{grid-template-columns:1fr 1fr}.cleanup-form .button{width:100%}} @media(max-width:520px){.cleanup-form{grid-template-columns:1fr}.cleanup-summary{align-items:flex-start;flex-direction:column}.cleanup-row{grid-template-columns:1fr}.cleanup-row .button{justify-self:start}}
       @media(max-width:650px){.auth-card{padding:26px 21px}.auth-actions{align-items:flex-start;flex-direction:column}}
-      .quality-filter-panel{background:#fffdf8;border:1px solid var(--line);border-radius:7px;padding:17px 19px;margin-bottom:16px}.quality-filter-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;padding-bottom:13px;border-bottom:1px solid #eee7d9}.quality-filter-head h2{margin:0;font:700 17px "Noto Serif SC",serif}.quality-filter-head span{color:#8e887d;font-size:11px}.quality-filter-grid{display:grid;grid-template-columns:1fr 1fr minmax(180px,1.5fr) auto;align-items:end;gap:12px;padding-top:15px}.quality-filter-grid label{display:grid;gap:5px;color:#756f65;font-size:11px}.quality-filter-grid select,.quality-filter-grid input{width:100%;min-width:0;padding:8px 9px;font-size:12px}.quality-filter-summary{margin-top:12px;color:#8b857a;font-size:11px}.quality-filter-summary strong{color:#143b36;font-size:13px}.quality-issue-list{display:grid;gap:5px}.quality-issue-row{display:grid;gap:3px;padding:8px 0;border-top:1px solid #eee8dd;text-align:left}.quality-issue-row b{color:#8b6738;font:500 11px "DM Mono",monospace}.quality-issue-row span{color:#6f6a61;font-size:11px;line-height:1.45;overflow-wrap:anywhere}.quality-issue-row small{color:#918a80;font-size:10px;line-height:1.45;overflow-wrap:anywhere}
+      .quality-filter-panel{background:#fffdf8;border:1px solid var(--line);border-radius:7px;padding:17px 19px;margin-bottom:16px}.quality-filter-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;padding-bottom:13px;border-bottom:1px solid #eee7d9}.quality-filter-head h2{margin:0;font:700 17px "Noto Serif SC",serif}.quality-filter-head span{color:#8e887d;font-size:11px}.quality-filter-grid{display:grid;grid-template-columns:1fr 1fr minmax(180px,1.5fr) auto;align-items:end;gap:12px;padding-top:15px}.quality-filter-grid label{display:grid;gap:5px;color:#756f65;font-size:11px}.quality-filter-grid select,.quality-filter-grid input{width:100%;min-width:0;padding:8px 9px;font-size:12px}.quality-filter-summary{margin-top:12px;color:#8b857a;font-size:11px}.quality-filter-summary strong{color:#143b36;font-size:13px}.quality-issue-list{display:grid;gap:5px}.quality-issue-row{display:grid;gap:7px;padding:10px 0;border-top:1px solid #eee8dd;text-align:left}.quality-issue-row b{color:#8b6738;font:500 11px "DM Mono",monospace}.quality-issue-row span{color:#6f6a61;font-size:11px;line-height:1.45;overflow-wrap:anywhere}.quality-issue-row small{color:#918a80;font-size:10px;line-height:1.45;overflow-wrap:anywhere}.quality-issue-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.quality-smart-tag{display:inline-flex;padding:2px 6px;border-radius:999px;background:#e8f2eb;color:#287052;font-size:10px;white-space:nowrap}.quality-evidence,.quality-suggestion{display:block;padding:6px 8px;border-radius:4px}.quality-evidence{background:#f4eee3;color:#75684f!important}.quality-suggestion{background:#edf4f0;color:#287052!important}.quality-row-actions{display:flex;gap:7px;flex-wrap:wrap}.quality-row-actions .button{padding:5px 8px;font-size:10px}.quality-state{font-size:10px!important;color:#8b6738!important}.quality-state.processed{color:#287052!important}.quality-state.ignored{color:#8b857a!important}
       @media(max-width:800px){.quality-filter-grid{grid-template-columns:1fr 1fr}.quality-filter-grid .quality-filter-keyword{grid-column:1 / -1}.quality-filter-grid .button{width:100%}} @media(max-width:520px){.quality-filter-head{align-items:flex-start;flex-direction:column}.quality-filter-grid{grid-template-columns:1fr}.quality-filter-grid .quality-filter-keyword{grid-column:auto}}
     </style>
   </head>
@@ -345,11 +345,12 @@
         </section>
 
         <section class="view" id="qualityView">
-          <div class="quality-intro"><p class="eyebrow">DATA HEALTH</p><h2>需要人工核对的记录</h2><p>异常不会静默进入正常报表。补齐后，指标会即时重算。</p></div>
+          <div class="quality-intro"><p class="eyebrow">DATA HEALTH · RECONCILIATION</p><h2>异常中心</h2><p>异常不会静默进入正常报表。每条记录都有证据和建议动作，处理后仍可筛选查看。</p></div>
           <section class="quality-filter-panel">
             <div class="quality-filter-head"><h2>筛选待办问题</h2><span>只筛选，不修改订单</span></div>
             <div class="quality-filter-grid">
               <label>问题类型<select id="qualityIssueFilter"><option value="all">全部问题</option><option value="missing">资料缺失</option><option value="payment">待收款 / 待返佣</option><option value="cost">成本异常</option><option value="paymentStatus">付款状态异常</option><option value="duplicate">疑似重复</option><option value="extension">续住关联</option><option value="review">需要核对</option></select></label>
+              <label>处理状态<select id="qualityStatusFilter"><option value="open">待处理</option><option value="all">全部状态</option><option value="processed">已处理</option><option value="ignored">已忽略</option></select></label>
               <label>业务类型<select id="qualityTypeFilter"><option value="all">酒店 + 机票</option><option value="hotel">酒店订单</option><option value="flight">机票订单</option></select></label>
               <label class="quality-filter-keyword">关键词<input id="qualitySearch" type="search" placeholder="订单编号、客户、酒店、确认号" /></label>
               <button class="button quiet" id="clearQualityFilters" type="button">重置筛选</button>
@@ -492,6 +493,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261019-20"></script>
+    <script src="app.js?v=20261019-21"></script>
   </body>
 </html>
