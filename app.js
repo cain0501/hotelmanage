@@ -923,7 +923,7 @@ function renderAssistantConversation(){
 }
 
 async function runAssistantChat(question){
-  const button=byId('aiParseButton'),status=byId('aiAccountingStatus');
+  const button=byId('aiParseButton'),status=byId('aiAccountingStatus'),input=byId('aiAccountingText');input.value='';
   if(!aiSettings.enabled){status.textContent='请先在右侧启用模型配置';status.className='ai-status error';return;}
   button.disabled=true;button.textContent='处理中…';status.textContent='AI 正在理解你的问题…';status.className='ai-status';
   try{
