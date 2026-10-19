@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261019-22" />
+    <link rel="stylesheet" href="styles.css?v=20261019-23" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -349,7 +349,7 @@
           <section class="quality-filter-panel">
             <div class="quality-filter-head"><h2>筛选待办问题</h2><span>只筛选，不修改订单</span></div>
             <div class="quality-filter-grid">
-              <label>问题类型<select id="qualityIssueFilter"><option value="all">全部问题</option><option value="missing">资料缺失</option><option value="payment">待收款 / 待返佣</option><option value="invoice">开票异常</option><option value="cost">成本异常</option><option value="paymentStatus">付款状态异常</option><option value="duplicate">疑似重复</option><option value="extension">续住关联</option><option value="review">需要核对</option></select></label>
+              <label>问题类型<select id="qualityIssueFilter"><option value="all">全部问题</option><option value="missing">资料缺失</option><option value="payment">待收款 / 待返佣</option><option value="cost">成本异常</option><option value="paymentStatus">付款状态异常</option><option value="duplicate">疑似重复</option><option value="extension">续住关联</option><option value="review">需要核对</option></select></label>
               <label>处理状态<select id="qualityStatusFilter"><option value="open">待处理</option><option value="all">全部状态</option><option value="processed">已处理</option><option value="ignored">已忽略</option></select></label>
               <label>业务类型<select id="qualityTypeFilter"><option value="all">酒店 + 机票</option><option value="hotel">酒店订单</option><option value="flight">机票订单</option></select></label>
               <label class="quality-filter-keyword">关键词<input id="qualitySearch" type="search" placeholder="订单编号、客户、酒店、确认号" /></label>
@@ -493,6 +493,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261019-22"></script>
+    <script src="app.js?v=20261019-23"></script>
   </body>
 </html>
