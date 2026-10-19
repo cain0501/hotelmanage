@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261019-25" />
+    <link rel="stylesheet" href="styles.css?v=20261019-26" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -139,6 +139,7 @@
       .analysis-panel{margin:0 20px 20px;padding:18px;background:linear-gradient(135deg,#f4eee3,#fffdf8);border:1px solid #e2d5bf;border-radius:6px}.analysis-panel .ai-draft-head{margin-bottom:12px}.analysis-input{width:100%;min-height:78px;resize:vertical;line-height:1.65;padding:11px;background:#fffdf9;border:1px solid var(--line);border-radius:5px;font:13px inherit}.analysis-examples{display:flex;flex-wrap:wrap;gap:4px 14px;margin:9px 0 14px}.analysis-examples .text-button{padding:0;color:#8e6737}.analysis-actions{display:flex;justify-content:space-between;align-items:center;gap:10px}.analysis-result{display:grid;gap:10px;margin-top:14px}.analysis-answer{padding:13px 14px;background:#183e38;color:#eef5ee;border-radius:5px;line-height:1.7}.analysis-answer .quality-smart-tag{margin-bottom:5px;background:#d7eadf;color:#205e4b}.analysis-answer p{margin:0;color:#eef5ee;font-size:13px;white-space:pre-line}.analysis-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.analysis-metrics div{padding:9px 10px;background:#fffdf8;border-radius:4px}.analysis-metrics span{display:block;color:#8d877d;font-size:10px;margin-bottom:3px}.analysis-metrics b{font:600 13px "DM Mono",monospace}.analysis-scope{padding:9px 10px;background:#f7f1e7;border-radius:4px;color:#756f65;font-size:11px;line-height:1.6}.analysis-scope strong{color:#143b36}.analysis-result.error{padding:10px 11px;background:#fff0ed;color:#934c3f;border-radius:4px;font-size:11px}
       [hidden]{display:none!important}
       @media(max-width:800px){.cleanup-form{grid-template-columns:1fr 1fr}.cleanup-form .button{width:100%}} @media(max-width:520px){.cleanup-form{grid-template-columns:1fr}.cleanup-summary{align-items:flex-start;flex-direction:column}.cleanup-row{grid-template-columns:1fr}.cleanup-row .button{justify-self:start}}
+      .ai-entry-panel .cleanup-form{grid-template-columns:1fr 1fr}.ai-entry-panel .cleanup-form .button{grid-column:1 / -1;width:100%}
       @media(max-width:650px){.analysis-metrics{grid-template-columns:1fr 1fr}.analysis-actions{align-items:flex-start;flex-direction:column}.analysis-actions .button{width:100%}}
       @media(max-width:650px){.auth-card{padding:26px 21px}.auth-actions{align-items:flex-start;flex-direction:column}}
       .quality-filter-panel{background:#fffdf8;border:1px solid var(--line);border-radius:7px;padding:17px 19px;margin-bottom:16px}.quality-filter-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;padding-bottom:13px;border-bottom:1px solid #eee7d9}.quality-filter-head h2{margin:0;font:700 17px "Noto Serif SC",serif}.quality-filter-head span{color:#8e887d;font-size:11px}.quality-filter-grid{display:grid;grid-template-columns:1fr 1fr minmax(180px,1.5fr) auto;align-items:end;gap:12px;padding-top:15px}.quality-filter-grid label{display:grid;gap:5px;color:#756f65;font-size:11px}.quality-filter-grid select,.quality-filter-grid input{width:100%;min-width:0;padding:8px 9px;font-size:12px}.quality-filter-summary{margin-top:12px;color:#8b857a;font-size:11px}.quality-filter-summary strong{color:#143b36;font-size:13px}.quality-issue-list{display:grid;gap:5px}.quality-issue-row{display:grid;gap:7px;padding:10px 0;border-top:1px solid #eee8dd;text-align:left}.quality-issue-row b{color:#8b6738;font:500 11px "DM Mono",monospace}.quality-issue-row span{color:#6f6a61;font-size:11px;line-height:1.45;overflow-wrap:anywhere}.quality-issue-row small{color:#918a80;font-size:10px;line-height:1.45;overflow-wrap:anywhere}.quality-issue-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.quality-smart-tag{display:inline-flex;padding:2px 6px;border-radius:999px;background:#e8f2eb;color:#287052;font-size:10px;white-space:nowrap}.quality-evidence,.quality-suggestion{display:block;padding:6px 8px;border-radius:4px}.quality-evidence{background:#f4eee3;color:#75684f!important}.quality-suggestion{background:#edf4f0;color:#287052!important}.quality-row-actions{display:flex;gap:7px;flex-wrap:wrap}.quality-row-actions .button{padding:5px 8px;font-size:10px}.quality-state{font-size:10px!important;color:#8b6738!important}.quality-state.processed{color:#287052!important}.quality-state.ignored{color:#8b857a!important}
@@ -173,7 +174,7 @@
           <button class="nav-item" data-view="ledger"><span>⌘</span>资金流水</button>
           <button class="nav-item" data-view="otherIncome"><span>＋</span>其它收入</button>
           <button class="nav-item" data-view="quality"><span>△</span>数据待办 <b id="issueCount">0</b></button>
-          <button class="nav-item" data-view="ai"><span>AI</span>一句话记账</button>
+          <button class="nav-item" data-view="ai"><span>AI</span>AI 工作台</button>
         </nav>
         <div class="sidebar-note">
           <span class="pulse"></span>
@@ -298,16 +299,16 @@
 
         <section class="view" id="aiView">
           <section class="ai-hero">
-            <div><p class="eyebrow">AI ACCOUNTING</p><h2>一句话记账</h2><p>把自然语言变成订单或收入草稿，确认后再保存到台账。</p></div>
+            <div><p class="eyebrow">AI WORKSPACE</p><h2>AI 工作台</h2><p>只需说一句话，AI 自动判断是记账、查数据还是分析经营情况。</p></div>
             <span class="ai-hero-mark">Aa</span>
           </section>
           <div class="ai-layout">
             <section class="panel ai-entry-panel">
-              <div class="panel-head"><div><p class="eyebrow">QUICK ENTRY</p><h2>告诉我这笔业务</h2></div><span class="panel-caption">最多 2000 字</span></div>
+               <div class="panel-head"><div><p class="eyebrow">ONE INPUT · ALL WORK</p><h2>告诉我你要做什么</h2></div><span class="panel-caption">一个入口 · 最多 2000 字</span></div>
               <div class="ai-entry-body">
-                <textarea id="aiAccountingText" class="ai-textarea" rows="7" placeholder="例如：今天给王先生订广州瑰丽豪华大床房1间住2晚，售价3600，成本3200，已付款，付款平台酒店官网"></textarea>
-                <div class="ai-examples"><button type="button" class="text-button" data-ai-example="今天收到携程返佣500元，关联确认号9716634">返佣到账</button><button type="button" class="text-button" data-ai-example="10月20日李先生广州飞东京，2张票，售价12800，成本11900，已出票">机票订单</button><button type="button" class="text-button" data-ai-example="10月18日付给小王佣金300元，备注广州瑰丽订单">其它支出</button></div>
-                <div class="ai-entry-actions"><span id="aiAccountingStatus" class="ai-status" role="status"></span><button class="button primary" id="aiParseButton" type="button">识别并生成草稿</button></div>
+                 <textarea id="aiAccountingText" class="ai-textarea" rows="7" placeholder="例如：今天给王先生订广州瑰丽豪华大床房1间住2晚，售价3600，成本3200，已付款；也可以问：本月酒店业务赚了多少钱？"></textarea>
+                 <div class="ai-examples"><button type="button" class="text-button" data-ai-example="今天收到携程返佣500元，关联确认号9716634">登记返佣</button><button type="button" class="text-button" data-ai-example="10月20日李先生广州飞东京，2张票，售价12800，成本11900，已出票">新增机票</button><button type="button" class="text-button" data-ai-example="10月18日付给小王佣金300元，备注广州瑰丽订单">登记支出</button><button type="button" class="text-button" data-ai-example="本月酒店业务赚了多少钱？">查本月利润</button><button type="button" class="text-button" data-ai-example="哪个预订人的利润率最高？">看预订人排行</button></div>
+                 <div class="ai-entry-actions"><span id="aiAccountingStatus" class="ai-status" role="status">AI 会自动判断任务类型，涉及保存时仍会先给你确认。</span><button class="button primary" id="aiParseButton" type="button">交给 AI 处理</button></div>
               </div>
               <div id="aiDraftPanel" class="ai-draft-panel" hidden>
                 <div class="ai-draft-head"><div><p class="eyebrow">DRAFT PREVIEW</p><h3>识别结果，请确认</h3></div><span id="aiDraftIntent" class="status pending"></span></div>
@@ -315,6 +316,7 @@
                 <pre id="aiDraftJson" class="ai-draft-json"></pre>
                 <div class="ai-entry-actions"><span class="ai-status">AI只负责识别，金额和利润仍由系统计算</span><button class="button primary" id="aiFillButton" type="button">填入对应表单</button></div>
               </div>
+              <div id="analysisResult" class="analysis-result" hidden></div>
               <div class="ai-clean-panel">
                 <div class="ai-draft-head"><div><p class="eyebrow">DATA CLEANUP</p><h3>扫描台账问题</h3></div><button class="button quiet" id="scanDataQuality" type="button">开始扫描</button></div>
                 <p class="ai-status">只扫描和定位，不会自动修改或删除订单。</p>
@@ -329,13 +331,6 @@
                   <button class="button quiet" id="previewCleanup" type="button">生成修改预览</button>
                 </div>
                 <div id="cleanupPreview" class="cleanup-preview"><span class="ai-status">填写旧值和新值后生成预览。</span></div>
-              </div>
-              <div class="analysis-panel">
-                <div class="ai-draft-head"><div><p class="eyebrow">BUSINESS ANALYSIS</p><h3>一句话问经营数据</h3></div><span class="panel-caption">先统计，后解释</span></div>
-                <textarea id="analysisQuestion" class="analysis-input" rows="3" placeholder="例如：本月酒店业务赚了多少钱？哪个预订人的利润率最高？"></textarea>
-                <div class="analysis-examples"><button type="button" class="text-button" data-analysis-example="本月酒店业务赚了多少钱？">本月酒店利润</button><button type="button" class="text-button" data-analysis-example="哪个预订人的利润率最高？">预订人利润率</button><button type="button" class="text-button" data-analysis-example="找出利润率低于5%的酒店订单。">低利润订单</button></div>
-                <div class="analysis-actions"><span id="analysisStatus" class="ai-status" role="status">统计按当前经营总览的日期口径计算。</span><button class="button primary" id="runAnalysis" type="button">分析</button></div>
-                <div id="analysisResult" class="analysis-result" hidden></div>
               </div>
             </section>
             <section class="panel ai-settings-panel">
@@ -502,6 +497,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261019-25"></script>
+    <script src="app.js?v=20261019-26"></script>
   </body>
 </html>
