@@ -173,6 +173,14 @@
       .ai-entry-actions{align-items:center}
       .ai-entry-actions .button{min-width:112px}
       .ai-draft-panel{margin:0 20px 12px;border-radius:9px}
+      .ai-layout{grid-template-columns:minmax(0,1fr) 310px;align-items:start}
+      .assistant-message.assistant.assistant-analysis{width:min(94%,820px);background:#173f39!important;color:#f4faf6!important;border-color:#173f39!important}
+      .assistant-message.assistant.assistant-analysis small{color:#bcd8ca!important}
+      .assistant-message.assistant.assistant-analysis p{color:#f4faf6!important}
+      .assistant-message.assistant.assistant-analysis .assistant-analysis-metrics div{background:#285f54!important;color:#fff!important}
+      .assistant-message.assistant.assistant-analysis .assistant-analysis-metrics span{color:#c8e1d3!important}
+      .assistant-message.assistant.assistant-analysis .assistant-analysis-metrics b{color:#fff!important}
+      .assistant-message.assistant.assistant-analysis .assistant-analysis-scope{color:#c8e1d3!important}
       @media(max-width:650px){.ai-entry-panel>.assistant-conversation{min-height:300px;max-height:58vh;margin:0 12px 10px;padding:12px 10px}.ai-entry-panel>.ai-entry-body{padding:12px}.assistant-message,.assistant-analysis{max-width:96%;width:auto}.assistant-analysis-metrics{grid-template-columns:1fr 1fr}.ai-entry-actions{align-items:flex-start}}
     </style>
   </head>
@@ -211,7 +219,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-          <small class="app-version">版本 20261020-30</small>
+          <small class="app-version">版本 20261020-31</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -541,6 +549,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261020-30"></script>
+    <script src="app.js?v=20261020-31"></script>
   </body>
 </html>
