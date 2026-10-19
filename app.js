@@ -45,6 +45,7 @@ let qualityStatusFilter = 'open';
 const AI_SETTINGS_STORAGE_KEY='qizhang-ai-settings-draft';
 let aiSettings = { provider:'openai-compatible', baseUrl:'https://api.openai.com/v1', model:'gpt-4o-mini', temperature:0.1, enabled:false };
 let aiDraft = null;
+let analysisResult = null;
 let cleanupPreviewOrders = [];
 let cleanupPreviewField = '';
 let cleanupPreviewFrom = '';
@@ -464,6 +465,48 @@ function renderQuality() {
   const groupOrder=['payment','cost','missing','paymentStatus','duplicate','extension','incomeLink','review'];
   byId('issueGrid').innerHTML=groupOrder.filter(kind=>entries.some(entry=>entry.kind===kind)).map(kind=>{const list=entries.filter(entry=>entry.kind===kind);return `<article class="issue-card"><strong class="issue-count">${list.length}</strong><h3>${qualityKindLabels[kind]}</h3><p>${qualityKindDescriptions[kind]}</p><div class="quality-issue-list">${list.map(({order,detail,recordType})=>{const status=qualityActionStatus(order,kind),nextAction=status==='open'?'processed':'open';const openButton=recordType==='other_income'?`<button class="button quiet" data-edit-income="${escapeHtml(order.id)}">编辑其它收入</button>`:`<button class="button quiet" data-detail="${escapeHtml(order.id)}">打开订单</button>`;return `<div class="quality-issue-row"><div class="quality-issue-head"><div><b>${escapeHtml(orderCode(order))}</b><span>${escapeHtml(order.customer||'未填写客户')} · ${escapeHtml(order.supplier||'未填写供应商')}</span></div><span class="quality-smart-tag">智能建议</span></div><small class="quality-state ${status}">${qualityActionLabels[status]}</small><small class="quality-evidence">证据：${escapeHtml(qualityEvidence(order,kind,detail))}</small><small class="quality-suggestion">建议：${escapeHtml(qualitySuggestion(order,kind))}</small><div class="quality-row-actions">${openButton}<button class="button quiet" data-quality-action="${nextAction}" data-quality-order="${escapeHtml(order.id)}" data-quality-kind="${escapeHtml(kind)}">${status==='open'?'标记已处理':'恢复待处理'}</button>${status==='open'?'<button class="button quiet" data-quality-action="ignored" data-quality-order="'+escapeHtml(order.id)+'" data-quality-kind="'+escapeHtml(kind)+'">忽略本次</button>':''}</div></div>`}).join('')}</div></article>`}).join('')||'<div class="empty-state">当前筛选下暂无待办问题</div>';
 }
+function analysisMonthKey(offset=0){const date=new Date(`${today}T00:00:00`);date.setDate(1);date.setMonth(date.getMonth()+offset);return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;}
+function analysisMonthRange(month){const [year,monthNumber]=month.split('-').map(Number);const last=new Date(Date.UTC(year,monthNumber,0)).getUTCDate();return {start:`${month}-01`,end:`${month}-${String(last).padStart(2,'0')}`};}
+function analysisScope(question){
+  const q=question.toLowerCase();const dateField=/入住|房晚|住宿/.test(q)?'serviceDate':/下单|预订/.test(q)?'orderDate':dashboardDateField;let start='',end='',label='全部数据';
+  const explicit=q.match(/(20\d{2})年\s*(\d{1,2})月/);
+  if(explicit){const month=`${explicit[1]}-${String(Number(explicit[2])).padStart(2,'0')}`;({start,end}=analysisMonthRange(month));label=`${explicit[1]}年${Number(explicit[2])}月`;}
+  else if(q.includes('本月')){const month=analysisMonthKey();({start,end}=analysisMonthRange(month));label='本月';}
+  else if(q.includes('上月')){const month=analysisMonthKey(-1);({start,end}=analysisMonthRange(month));label='上月';}
+  else if(q.includes('今年')||q.includes('本年')){start=`${today.slice(0,4)}-01-01`;end=`${today.slice(0,4)}-12-31`;label='今年';}
+  else if(q.includes('去年')){const year=Number(today.slice(0,4))-1;start=`${year}-01-01`;end=`${year}-12-31`;label='去年';}
+  return {dateField,start,end,label,dateFieldLabel:dateField==='serviceDate'?'入住/出发日期':'下单日期'};
+}
+function analysisDimensionMatch(question){
+  const q=question.toLowerCase();const candidates=[['supplier',[...new Set(orders.map(order=>order.supplier).filter(Boolean))]],['location',[...new Set(orders.map(order=>order.location).filter(Boolean))]],['booker',[...new Set(orders.map(order=>order.booker).filter(Boolean))]],['customer',[...new Set(orders.map(order=>order.customer).filter(Boolean))]]];
+  for(const [field,values] of candidates){const value=values.sort((a,b)=>b.length-a.length).find(item=>q.includes(String(item).toLowerCase()));if(value)return {field,value};}
+  return null;
+}
+function analysisSummary(rows,incomes){const gmv=rows.reduce((n,order)=>n+Number(order.gmv||0),0),profitTotal=rows.reduce((n,order)=>n+profit(order),0),received=rows.reduce((n,order)=>n+Number(order.received||0),0);return {orders:rows.length,hotels:rows.filter(order=>order.type==='hotel').length,flights:rows.filter(order=>order.type==='flight').length,gmv,profit:profitTotal,margin:gmv?profitTotal/gmv*100:0,received,outstanding:rows.filter(customerReceivable).reduce((n,order)=>n+(isCommissionOrder(order)?commissionOutstanding(order):Math.max(0,Number(order.gmv||0)-Number(order.received||0))),0),roomNights:rows.reduce((n,order)=>n+roomNights(order),0),tickets:rows.reduce((n,order)=>n+Number(order.tickets||0),0),otherNet:incomes.reduce((n,item)=>n+otherIncomeNet(item),0)};}
+function analysisGroup(rows,field){const map={};rows.forEach(order=>{const name=String(order[field]||'未填写').trim()||'未填写';const item=map[name]||{name,orders:0,gmv:0,profit:0};item.orders+=1;item.gmv+=Number(order.gmv||0);item.profit+=profit(order);map[name]=item;});return Object.values(map).map(item=>({...item,margin:item.gmv?item.profit/item.gmv*100:0})).sort((a,b)=>b.profit-a.profit);}
+function buildBusinessAnalysis(question){
+  const scope=analysisScope(question),q=question.toLowerCase();let rows=orders.filter(order=>{const date=order[scope.dateField]||'';return (!scope.start||date>=scope.start)&&(!scope.end||date<=scope.end);});let incomes=otherIncomes.filter(item=>(!scope.start||item.date>=scope.start)&&(!scope.end||item.date<=scope.end));
+  const type=/机票|航班|出票|票数/.test(q)&&!/(酒店|房晚|入住)/.test(q)?'flight':/(酒店|房晚|入住|住宿)/.test(q)?'hotel':'all';if(type!=='all')rows=rows.filter(order=>order.type===type);const dimension=analysisDimensionMatch(question);if(dimension)rows=rows.filter(order=>String(order[dimension.field]||'').toLowerCase()===dimension.value.toLowerCase());
+  let condition='';if(/待收款|未收款/.test(q)){rows=rows.filter(customerReceivable);condition='待收款';}else if(/待返佣|返佣.*未到账|返佣逾期/.test(q)){rows=rows.filter(order=>isCommissionOrder(order)&&commissionOutstanding(order)>0);condition='待返佣';}
+  const lowMargin=q.match(/利润率\s*(?:低于|小于|少于)\s*(\d+(?:\.\d+)?)\s*%/);if(lowMargin){const threshold=Number(lowMargin[1]);rows=rows.filter(order=>Number(order.gmv||0)>0&&profit(order)/Number(order.gmv)*100<threshold);condition=`利润率低于 ${threshold}%`;}
+  const summary=analysisSummary(rows,incomes);const rankingField=/预订人/.test(q)?'booker':/酒店|供应商|航司/.test(q)?'supplier':/城市/.test(q)?'location':null;const ranking=rankingField?analysisGroup(rows,rankingField).slice(0,10):[];let answer='';
+  if(condition)answer=`${scope.label}${type==='hotel'?'酒店':type==='flight'?'机票':'订单'}${condition}共 ${summary.orders} 笔，GMV ${compactCurrency(summary.gmv)}，订单利润 ${compactCurrency(summary.profit)}。`;
+  else if(rankingField&&ranking.length){const top=ranking[0];answer=`按${rankingField==='booker'?'预订人':rankingField==='supplier'?'酒店/航司':'城市'}统计，当前利润最高的是${top.name}：${top.orders} 笔订单，GMV ${compactCurrency(top.gmv)}，利润 ${compactCurrency(top.profit)}，利润率 ${top.margin.toFixed(1)}%。`;}
+  else answer=`${scope.label}${type==='hotel'?'酒店':type==='flight'?'机票':'经营数据'}共 ${summary.orders} 笔，GMV ${compactCurrency(summary.gmv)}，订单利润 ${compactCurrency(summary.profit)}，利润率 ${summary.margin.toFixed(1)}%。房晚 ${summary.roomNights}，票数 ${summary.tickets}。`;
+  return {question,scope,scopeLabel:scope.label,dateFieldLabel:scope.dateFieldLabel,type,dimension,condition,summary,ranking,topOrders:rows.slice().sort((a,b)=>profit(a)-profit(b)).slice(0,10).map(order=>({code:orderCode(order),customer:order.customer||'未填写',supplier:order.supplier||'未填写',date:order[scope.dateField]||'',gmv:Number(order.gmv||0),profit:profit(order)})),answer};
+}
+function renderAnalysisResult(result,source='确定性统计'){
+  const panel=byId('analysisResult');if(!panel)return;const summary=result.summary||{};panel.className='analysis-result';panel.hidden=false;panel.innerHTML=`<div class="analysis-answer"><span class="quality-smart-tag">${escapeHtml(source)}</span><p>${escapeHtml(result.answer||'暂无可回答的数据。')}</p></div><div class="analysis-metrics"><div><span>订单数</span><b>${summary.orders||0}</b></div><div><span>GMV</span><b>${compactCurrency(summary.gmv||0)}</b></div><div><span>订单利润</span><b>${compactCurrency(summary.profit||0)}</b></div><div><span>利润率</span><b>${Number(summary.margin||0).toFixed(1)}%</b></div></div><div class="analysis-scope"><strong>统计口径：</strong>${escapeHtml(result.scopeLabel||'全部数据')} · ${escapeHtml(result.dateFieldLabel||'下单日期')} · ${escapeHtml(result.type==='hotel'?'酒店':result.type==='flight'?'机票':'酒店 + 机票')}${result.dimension?` · ${escapeHtml(result.dimension.field)}：${escapeHtml(result.dimension.value)}`:''}${result.condition?` · ${escapeHtml(result.condition)}`:''}</div>`;
+}
+async function runBusinessAnalysis(){
+  const question=byId('analysisQuestion').value.trim(),button=byId('runAnalysis'),status=byId('analysisStatus');if(!question){status.textContent='请先输入一个经营问题。';status.className='ai-status error';return;}
+  const localResult=buildBusinessAnalysis(question);analysisResult=localResult;renderAnalysisResult(localResult);status.textContent='已完成确定性统计；金额和口径来自当前台账。';status.className='ai-status success';
+  if(!aiSettings.enabled||!supabaseClient||!currentUser){status.textContent+=' 启用模型配置后可生成 AI 文字说明。';return;}
+  button.disabled=true;button.textContent='解释中…';
+  try{const {data:sessionData}=await supabaseClient.auth.getSession();const response=await fetch(`${SUPABASE_URL}/functions/v1/ai-accounting`,{method:'POST',headers:{Authorization:`Bearer ${sessionData.session?.access_token||''}`,'Content-Type':'application/json'},body:JSON.stringify({mode:'analysis',text:question,context:{scope:localResult.scopeLabel,date_field:localResult.dateFieldLabel,type:localResult.type,condition:localResult.condition,summary:localResult.summary,ranking:localResult.ranking,top_orders:localResult.topOrders}})});const result=await response.json();if(!response.ok)throw new Error(result.error||'AI经营解释失败');if(result.data?.answer){localResult.answer=result.data.answer;analysisResult=localResult;renderAnalysisResult(localResult,`AI说明 · ${result.model||'模型'}`);status.textContent='统计完成，AI已基于确定性结果生成说明。';}}
+  catch(error){status.textContent=`统计已完成，但 AI 说明失败：${error.message}`;status.className='ai-status error';}
+  finally{button.disabled=false;button.textContent='分析';}
+}
 function dataCleaningEntries(){
   const entries=[];
   orders.forEach(order=>{
@@ -740,6 +783,8 @@ byId('aiSettingsForm').addEventListener('submit',event=>{event.preventDefault();
 byId('aiProvider').addEventListener('change',event=>{if(event.target.value==='deepseek'){if(!byId('aiBaseUrl').value||byId('aiBaseUrl').value.includes('openai.com'))byId('aiBaseUrl').value='https://api.deepseek.com/v1';if(!byId('aiModel').value||byId('aiModel').value==='gpt-4o-mini')byId('aiModel').value='deepseek-chat';}else if(event.target.value==='openai-compatible'&&byId('aiBaseUrl').value.includes('deepseek.com')){byId('aiBaseUrl').value='https://api.openai.com/v1';if(byId('aiModel').value==='deepseek-chat')byId('aiModel').value='gpt-4o-mini';}});
 byId('aiParseButton').addEventListener('click',parseAiAccounting);
 byId('aiFillButton').addEventListener('click',fillFromAiDraft);
+byId('runAnalysis').addEventListener('click',runBusinessAnalysis);
+document.querySelectorAll('[data-analysis-example]').forEach(button=>button.addEventListener('click',()=>{byId('analysisQuestion').value=button.dataset.analysisExample;byId('analysisQuestion').focus();}));
 byId('scanDataQuality').addEventListener('click',()=>{byId('aiCleaningResults').innerHTML='<span class="ai-status">正在扫描订单字段和重复记录…</span>';setTimeout(renderDataCleaning,0);});
 byId('previewCleanup').addEventListener('click',renderCleanupPreview);
 document.addEventListener('click',event=>{if(event.target.closest('[data-confirm-cleanup]'))confirmCleanup();});

@@ -37,6 +37,11 @@ const systemPrompt = (today: string) => `你是酒店和机票运营台账助手
 6. 付款状态为空时不要默认已付款，放入 missing_fields。
 7. 无法判断时 intent=unknown。所有数字必须是数字，无法确定时为 0。空字符串代表没有识别到。`;
 
+const analysisPrompt = `你是酒店运营分析说明助手。用户的问题已经由前端白名单规则完成统计，下面会提供确定性的统计口径和结果。
+只根据 context 中的事实组织中文回答，不要重新计算、补造数据、生成 SQL，也不要修改任何订单。
+只输出 JSON：{"answer":"简洁但完整的中文回答","key_points":["不超过3条要点"],"limitations":["必要时说明口径或数据限制"]}。
+回答必须明确统计范围、日期口径和关键金额；如果数据不足，直接说明“当前数据不足以判断”，不要猜测。`;
+
 function safeBaseUrl(value: string) {
   const fallback = Deno.env.get('AI_BASE_URL') || 'https://api.openai.com/v1';
   try {
@@ -70,8 +75,10 @@ Deno.serve(async (request) => {
 
   try {
     const body = await request.json();
+    const mode = String(body?.mode || 'accounting');
     const text = String(body?.text || '').trim();
     if (!text || text.length > 2000) return json({ error: '请输入 1 到 2000 字的记账内容' }, 400);
+    if (mode === 'analysis' && (!body?.context || JSON.stringify(body.context).length > 16000)) return json({ error: '经营分析上下文无效或过长' }, 400);
     const { data: settings } = await userClient.from('ai_settings').select('provider,base_url,model,temperature,enabled').eq('user_id', user.id).maybeSingle();
     if (settings && settings.enabled === false) return json({ error: 'AI功能尚未启用，请先在模型配置中启用' }, 400);
     const apiKey = Deno.env.get('AI_API_KEY');
@@ -82,13 +89,13 @@ Deno.serve(async (request) => {
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, temperature, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: systemPrompt(new Date().toISOString().slice(0, 10)) }, { role: 'user', content: text }] }),
+      body: JSON.stringify({ model, temperature, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: mode === 'analysis' ? analysisPrompt : systemPrompt(new Date().toISOString().slice(0, 10)) }, { role: 'user', content: mode === 'analysis' ? JSON.stringify({ question: text, context: body.context }) : text }] }),
     });
     const result = await response.json();
     if (!response.ok) return json({ error: result?.error?.message || `模型接口错误（${response.status}）` }, 502);
     const content = result?.choices?.[0]?.message?.content;
     if (typeof content !== 'string') return json({ error: '模型没有返回识别结果' }, 502);
-    return json({ data: parseModelJson(content), model });
+    return json({ data: parseModelJson(content), model, mode });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : 'AI记账失败' }, 500);
   }
