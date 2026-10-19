@@ -307,8 +307,12 @@ const issueEntries = () => orders.flatMap(order => {
   const issues = [...(order.issues || [])];
   if (!isCommissionOrder(order) && !order.cost && order.gmv) issues.push('成本金额为 0');
   if (!order.serviceDate) issues.push('缺少业务日期');
-  if (isCommissionOrder(order) && commissionOutstanding(order)>0) issues.push('存在待返佣');
-  else if (payment(order) === 'unpaid' || payment(order) === 'partial') issues.push('存在待收款');
+  const servicePassed=Boolean(order.serviceDate&&order.serviceDate<today);
+  if (isCommissionOrder(order) && commissionOutstanding(order)>0) { issues.push(servicePassed?'返佣逾期':'存在待返佣'); }
+  else if (payment(order) === 'unpaid' || payment(order) === 'partial') { issues.push(servicePassed&&order.type==='hotel'?'已入住未收款':servicePassed&&order.type==='flight'&&order.status==='ticketed'?'已出票未收款':'存在待收款'); }
+  if (Number(order.received||0)>0 && invoiceStatus(order)==='unissued') issues.push('已收款未开票');
+  if (!isCommissionOrder(order) && Number(order.gmv||0)>0 && Number(order.cost||0)>Number(order.gmv||0)) issues.push('成本高于 GMV');
+  if (!isCommissionOrder(order) && order.profitOverride!==null && order.profitOverride!==undefined && Math.abs(Number(order.profitOverride)-(Number(order.gmv||0)-Number(order.cost||0)))>0.01) issues.push('利润与 GMV/成本不一致');
   if (payment(order) === 'unknown') issues.push('付款状态待确认');
   return [...new Set(issues)].map(issue => ({ order, issue }));
 });
@@ -406,18 +410,21 @@ function renderLedger() {
   byId('ledgerTable').innerHTML=rows.map(r=>`<tr><td>${dateFmt(r.date)}</td><td><span class="status ${r.amount>=0?'paid':'unpaid'}">${r.kind}</span></td><td>${r.order.id}</td><td>${r.party}</td><td>${r.note}</td><td class="money amount ${r.amount>=0?'income':'expense'}">${r.amount>=0?'+':'−'}${compactCurrency(Math.abs(r.amount))}</td></tr>`).join('') || '<tr><td colspan="6"><div class="empty-state">暂无资金流水</div></td></tr>';
 }
 function renderOtherIncome(){const total=otherIncomes.reduce((n,item)=>n+Number(item.amount||0),0),expense=otherIncomes.reduce((n,item)=>n+Number(item.expense||0),0);byId('otherIncomeSummary').innerHTML=`<article><p>其它收入</p><strong class="profit-positive">${compactCurrency(total)}</strong></article><article><p>其它支出</p><strong class="profit-negative">${compactCurrency(expense)}</strong></article><article><p>净额</p><strong>${compactCurrency(total-expense)}</strong></article>`;byId('otherIncomeTable').innerHTML=otherIncomes.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(item=>{const linked=incomeOrderIds(item).map(id=>orders.find(order=>order.id===id)).filter(Boolean);const net=Number(item.amount||0)-Number(item.expense||0);return `<tr><td>${dateFmt(item.date)}</td><td><strong>${item.name}</strong></td><td>${item.payer||'—'}</td><td>${item.payee||'—'}</td><td>${linked.length?`<div class="income-order-links">${linked.map(order=>`<span class="order-code">${orderCode(order)}</span>`).join('')}</div><small>${linked.length} 笔订单</small>`:'未关联订单'}</td><td class="money">${compactCurrency(item.amount)}</td><td class="money profit-negative">${compactCurrency(item.expense)}</td><td class="money ${net>=0?'profit-positive':'profit-negative'}">${compactCurrency(net)}</td><td class="row-actions"><button class="button quiet" data-edit-income="${item.id}" aria-label="编辑">编辑</button><button class="button quiet danger" data-delete-income="${item.id}" aria-label="删除">删除</button></td></tr>`}).join('')||'<tr><td colspan="9"><div class="empty-state">还没有其它收入记录</div></td></tr>';}
-const qualityKindLabels={missing:'资料缺失',payment:'待收款 / 待返佣',cost:'成本异常',paymentStatus:'付款状态异常',duplicate:'疑似重复',extension:'续住关联',review:'需要核对'};
-const qualityKindDescriptions={missing:'补齐客户、日期、供应商、房型、GMV、成本或开票公司等字段。',payment:'确认客户实收金额，或补登记平台返佣到账。',cost:'确认是否为赠送、未结算，或遗漏成本。',paymentStatus:'核对订单当前付款状态和收款记录。',duplicate:'核对确认号、客户、酒店和入住日期，避免重复记账。',extension:'同确认号但入住日期相差一天，建议保留为独立续住订单。',review:'确认订单信息差异是否符合实际业务。'};
+const qualityKindLabels={missing:'资料缺失',payment:'待收款 / 待返佣',invoice:'开票异常',cost:'成本异常',paymentStatus:'付款状态异常',duplicate:'疑似重复',extension:'续住关联',review:'需要核对'};
+const qualityKindDescriptions={missing:'补齐客户、日期、供应商、房型、GMV、成本或开票公司等字段。',payment:'确认客户实收金额，或补登记平台返佣到账。',invoice:'已产生收款但还没有开票记录，请核对开票状态。',cost:'确认是否为赠送、未结算，或遗漏成本。',paymentStatus:'核对订单当前付款状态和收款记录。',duplicate:'核对确认号、客户、酒店和入住日期，避免重复记账。',extension:'同确认号但入住日期相差一天，建议保留为独立续住订单。',review:'确认订单信息差异是否符合实际业务。'};
 const qualityActionLabels={open:'待处理',processed:'已处理',ignored:'已忽略'};
 function qualityActionStatus(order,kind){return qualityActions[qualityActionKey(order,kind)]?.status||'open';}
 function qualityEvidence(order,kind,detail){
   if(kind==='payment')return isCommissionOrder(order)?`预计返佣 ${compactCurrency(commissionExpected(order))} · 已到账 ${compactCurrency(commissionReceived(order))} · 待到账 ${compactCurrency(commissionOutstanding(order))}`:`GMV ${compactCurrency(order.gmv)} · 已收 ${compactCurrency(order.received)} · 待收 ${compactCurrency(Math.max(0,Number(order.gmv||0)-Number(order.received||0)))}`;
+  if(kind==='invoice')return `已收 ${compactCurrency(order.received)} · 开票状态 ${invoiceText(order)}${order.invoiceCompany?` · ${order.invoiceCompany}`:''}`;
+  if(kind==='cost'&&detail.includes('利润'))return `GMV ${compactCurrency(order.gmv)} · 成本 ${compactCurrency(order.cost)} · 录入利润 ${compactCurrency(order.profitOverride)}`;
   if(kind==='cost')return `GMV ${compactCurrency(order.gmv)} · 成本 ${compactCurrency(order.cost)}`;
   if(kind==='duplicate'||kind==='extension'||kind==='review')return `${order.confirmation?'确认号 '+order.confirmation+' · ':''}${order.serviceDate?'业务日期 '+order.serviceDate+' · ':''}${detail}`;
   return detail;
 }
 function qualitySuggestion(order,kind){
   if(kind==='payment')return isCommissionOrder(order)?'建议登记平台返佣到账金额；不要把客人前台付款当作我方收款。':'建议补登记客户本次收款，或确认订单是否应标记为退款/取消。';
+  if(kind==='invoice')return '建议核对是否需要开票；需要开票时补充开票公司，明确无发票时选择“无发票”。';
   if(kind==='cost')return '建议核对供应商结算单；若确实无需我方支付，请使用客人前台付款/平台返佣结算模式。';
   if(kind==='missing')return '建议打开订单补齐缺失字段后再纳入经营分析。';
   if(kind==='duplicate')return '建议打开两笔订单比对；确认重复后人工处理，系统不会自动删除。';
@@ -428,7 +435,7 @@ function qualitySuggestion(order,kind){
 function qualityEntries(){
   const grouped=new Map();
   const add=(order,kind,detail)=>{const key=`${order.id}|${kind}`;if(!grouped.has(key))grouped.set(key,{order,kind,details:[]});const entry=grouped.get(key);if(detail&&!entry.details.includes(detail))entry.details.push(detail);};
-  issueEntries().forEach(({order,issue})=>{const kind=issue.includes('待收')||issue.includes('待返')?'payment':issue.includes('成本')?'cost':issue.includes('缺少')?'missing':issue.includes('付款状态')?'paymentStatus':'review';add(order,kind,issue);});
+  issueEntries().forEach(({order,issue})=>{const kind=issue.includes('开票')?'invoice':issue.includes('收款')||issue.includes('返佣')?'payment':issue.includes('成本')||issue.includes('利润')?'cost':issue.includes('缺少')?'missing':issue.includes('付款状态')?'paymentStatus':'review';add(order,kind,issue);});
   dataCleaningEntries().forEach(({order,kind,detail})=>{const mapped=kind==='缺失字段'?'missing':kind==='疑似重复'?'duplicate':kind==='续住关联'?'extension':'review';add(order,mapped,detail);});
   return [...grouped.values()].map(entry=>({...entry,detail:entry.details.join('；')}));
 }
@@ -453,7 +460,7 @@ function renderQuality() {
   const allEntries=qualityEntries(),entries=filteredQualityEntries(),openCount=allEntries.filter(entry=>qualityActionStatus(entry.order,entry.kind)==='open').length;
   byId('issueCount').textContent=openCount;
   byId('qualityFilterSummary').innerHTML=`当前显示 <strong>${entries.length}</strong> 条 · 待处理 <strong>${openCount}</strong> 条 · 全部异常 <strong>${allEntries.length}</strong> 条`;
-  const groupOrder=['payment','cost','missing','paymentStatus','duplicate','extension','review'];
+  const groupOrder=['payment','invoice','cost','missing','paymentStatus','duplicate','extension','review'];
   byId('issueGrid').innerHTML=groupOrder.filter(kind=>entries.some(entry=>entry.kind===kind)).map(kind=>{const list=entries.filter(entry=>entry.kind===kind);return `<article class="issue-card"><strong class="issue-count">${list.length}</strong><h3>${qualityKindLabels[kind]}</h3><p>${qualityKindDescriptions[kind]}</p><div class="quality-issue-list">${list.map(({order,detail})=>{const status=qualityActionStatus(order,kind),nextAction=status==='open'?'processed':'open';return `<div class="quality-issue-row"><div class="quality-issue-head"><div><b>${escapeHtml(orderCode(order))}</b><span>${escapeHtml(order.customer||'未填写客户')} · ${escapeHtml(order.supplier||'未填写供应商')}</span></div><span class="quality-smart-tag">智能建议</span></div><small class="quality-state ${status}">${qualityActionLabels[status]}</small><small class="quality-evidence">证据：${escapeHtml(qualityEvidence(order,kind,detail))}</small><small class="quality-suggestion">建议：${escapeHtml(qualitySuggestion(order,kind))}</small><div class="quality-row-actions"><button class="button quiet" data-detail="${escapeHtml(order.id)}">打开订单</button><button class="button quiet" data-quality-action="${nextAction}" data-quality-order="${escapeHtml(order.id)}" data-quality-kind="${escapeHtml(kind)}">${status==='open'?'标记已处理':'恢复待处理'}</button>${status==='open'?'<button class="button quiet" data-quality-action="ignored" data-quality-order="'+escapeHtml(order.id)+'" data-quality-kind="'+escapeHtml(kind)+'">忽略本次</button>':''}</div></div>`}).join('')}</div></article>`}).join('')||'<div class="empty-state">当前筛选下暂无待办问题</div>';
 }
 function dataCleaningEntries(){
