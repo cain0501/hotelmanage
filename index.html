@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261019-18" />
+    <link rel="stylesheet" href="styles.css?v=20261019-19" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -135,7 +135,9 @@
       .ai-clean-panel{margin:0 20px 20px;padding:18px;background:#fffdf8;border:1px solid var(--line);border-radius:6px}.ai-clean-panel>.ai-status{display:block;margin:9px 0 12px}.ai-cleaning-results{display:grid;gap:7px}.ai-clean-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:9px 10px;background:#f7f1e7;border-radius:4px;font-size:11px}.ai-clean-row .status{white-space:nowrap}.ai-clean-row small{display:block;color:#8b857a;margin-top:3px}.ai-clean-empty{padding:12px;background:#e8f2eb;color:#287052;border-radius:4px;font-size:11px}
       @media(max-width:900px){.ai-layout{grid-template-columns:1fr}.ai-settings-panel{order:-1}}
       @media(max-width:650px){.ai-hero{padding:22px 20px}.ai-hero h2{font-size:23px}.ai-hero-mark{font-size:40px}.ai-draft-summary{grid-template-columns:1fr}.ai-entry-actions{align-items:flex-start;flex-direction:column}.ai-entry-actions .button{width:100%}}
+      .cleanup-form{display:grid;grid-template-columns:minmax(145px,.8fr) minmax(180px,1fr) minmax(180px,1fr) auto;align-items:end;gap:10px;margin-top:14px}.cleanup-form label{display:grid;gap:5px;color:#716d65;font-size:11px}.cleanup-form input,.cleanup-form select{width:100%;min-width:0;padding:8px 9px;font-size:12px}.cleanup-form .button{white-space:nowrap}.cleanup-preview{display:grid;gap:8px;margin-top:14px}.cleanup-summary{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 11px;background:#f4eee3;border-radius:4px;color:#716d65;font-size:11px}.cleanup-summary strong{color:#143b36;font-size:13px}.cleanup-summary b{color:#a84d3e}.cleanup-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}.cleanup-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 11px;background:#f7f1e7;border-radius:4px;font-size:11px}.cleanup-row-main{min-width:0}.cleanup-row-title{display:flex;align-items:center;gap:7px;flex-wrap:wrap;color:#143b36}.cleanup-row-title strong{font:500 11px "DM Mono",monospace;color:#8b6738}.cleanup-row-title span{color:#6f6a61;overflow-wrap:anywhere}.cleanup-row-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;color:#8b857a}.cleanup-row-meta span{overflow-wrap:anywhere}.cleanup-change{margin-top:5px;color:#6f6a61}.cleanup-change b{color:#a84d3e;font-weight:600}.cleanup-change strong{color:#287052;font-weight:600}.cleanup-preview.error{padding:10px 11px;background:#fff0ed;color:#934c3f;border-radius:4px;font-size:11px}.cleanup-preview.success{padding:10px 11px;background:#e8f2eb;color:#287052;border-radius:4px;font-size:11px}
       [hidden]{display:none!important}
+      @media(max-width:800px){.cleanup-form{grid-template-columns:1fr 1fr}.cleanup-form .button{width:100%}} @media(max-width:520px){.cleanup-form{grid-template-columns:1fr}.cleanup-summary{align-items:flex-start;flex-direction:column}.cleanup-row{grid-template-columns:1fr}.cleanup-row .button{justify-self:start}}
       @media(max-width:650px){.auth-card{padding:26px 21px}.auth-actions{align-items:flex-start;flex-direction:column}}
     </style>
   </head>
@@ -314,6 +316,16 @@
                 <p class="ai-status">只扫描和定位，不会自动修改或删除订单。</p>
                 <div id="aiCleaningResults" class="ai-cleaning-results"><span class="ai-status">尚未扫描</span></div>
               </div>
+              <div class="ai-clean-panel">
+                <div class="ai-draft-head"><div><p class="eyebrow">CLEANUP PREVIEW</p><h3>批量统一字段</h3></div><span class="panel-caption">先预览，后保存</span></div>
+                <div class="cleanup-form">
+                  <label>清洗字段<select id="cleanupField"><option value="supplier">酒店 / 航司</option><option value="paymentPlatform">付款平台</option><option value="location">城市 / 航线</option><option value="booker">预订人</option></select></label>
+                  <label>当前值<input id="cleanupFrom" placeholder="例如：广州瑰丽酒店" /></label>
+                  <label>统一为<input id="cleanupTo" placeholder="例如：广州瑰丽" /></label>
+                  <button class="button quiet" id="previewCleanup" type="button">生成修改预览</button>
+                </div>
+                <div id="cleanupPreview" class="cleanup-preview"><span class="ai-status">填写旧值和新值后生成预览。</span></div>
+              </div>
             </section>
             <section class="panel ai-settings-panel">
               <div class="panel-head"><div><p class="eyebrow">MODEL SETTINGS</p><h2>模型配置</h2></div><span id="aiConfigStatus" class="panel-caption">未配置</span></div>
@@ -468,6 +480,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261019-18"></script>
+    <script src="app.js?v=20261019-19"></script>
   </body>
 </html>

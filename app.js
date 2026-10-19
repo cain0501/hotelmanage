@@ -41,6 +41,10 @@ let supplierFilter = '';
 const AI_SETTINGS_STORAGE_KEY='qizhang-ai-settings-draft';
 let aiSettings = { provider:'openai-compatible', baseUrl:'https://api.openai.com/v1', model:'gpt-4o-mini', temperature:0.1, enabled:false };
 let aiDraft = null;
+let cleanupPreviewOrders = [];
+let cleanupPreviewField = '';
+let cleanupPreviewFrom = '';
+let cleanupPreviewTo = '';
 const localOtherIncomes = JSON.parse(localStorage.getItem('qizhang-other-income') || '[]');
 let otherIncomes = [];
 
@@ -427,6 +431,44 @@ function renderDataCleaning(){
   if(!entries.length){result.innerHTML='<div class="ai-clean-empty">扫描完成，暂未发现缺失字段、续住关联或疑似重复订单。</div>';return;}
   result.innerHTML=entries.slice(0,30).map(item=>{const badgeClass=item.kind==='疑似重复'?'partial':item.kind==='续住关联'?'paid':'unpaid';return `<div class="ai-clean-row"><span class="status ${badgeClass}">${escapeHtml(item.kind)}</span><div><b>${escapeHtml(orderCode(item.order))}</b><small>${escapeHtml(item.detail)} · ${escapeHtml(item.order.supplier||'未填写供应商')} · ${escapeHtml(item.order.customer||'未填写客户')}</small></div><button class="button quiet" data-open-order="${escapeHtml(item.order.id)}">查看</button></div>`}).join('')+(entries.length>30?`<span class="ai-status">共发现 ${entries.length} 个问题，当前显示前30个。</span>`:'');
 }
+const cleanupFieldLabels = { supplier:'酒店 / 航司', paymentPlatform:'付款平台', location:'城市 / 航线', booker:'预订人' };
+function getCleanupMatches(){
+  const field=byId('cleanupField')?.value;
+  const from=(byId('cleanupFrom')?.value||'').trim();
+  if(!field||!from)return [];
+  return orders.filter(order=>String(order[field]??'').trim()===from);
+}
+function renderCleanupPreview(){
+  const result=byId('cleanupPreview');if(!result)return;
+  const field=byId('cleanupField').value;
+  const from=byId('cleanupFrom').value.trim();
+  const to=byId('cleanupTo').value.trim();
+  cleanupPreviewField=field;cleanupPreviewFrom=from;cleanupPreviewTo=to;cleanupPreviewOrders=[];
+  result.className='cleanup-preview';
+  if(!from||!to){result.innerHTML='<span class="ai-status">请先填写当前值和统一后的新值。</span>';return;}
+  if(from===to){result.innerHTML='<span class="ai-status error">新旧值相同，不需要修改。</span>';return;}
+  const matches=getCleanupMatches();cleanupPreviewOrders=matches;
+  if(!matches.length){result.innerHTML=`<div class="ai-clean-empty">没有找到“${escapeHtml(from)}”的订单，未执行任何修改。</div>`;return;}
+  const label=cleanupFieldLabels[field]||field;
+  result.innerHTML=`<div class="cleanup-summary"><span>字段：${escapeHtml(label)} · 当前值：<b>${escapeHtml(from)}</b> · 统一为：<strong>${escapeHtml(to)}</strong></span><strong>${matches.length} 笔将被修改</strong></div><div class="cleanup-actions"><button class="button primary" type="button" data-confirm-cleanup>确认批量修改 ${matches.length} 笔</button></div>${matches.map(order=>`<div class="cleanup-row"><div class="cleanup-row-main"><div class="cleanup-row-title"><strong>${escapeHtml(orderCode(order))}</strong><span>${escapeHtml(order.customer||'待补客户')}</span><span>${escapeHtml(order.supplier||'待确认供应商')}</span></div><div class="cleanup-row-meta"><span>${escapeHtml(order.type==='hotel'?'酒店':'机票')}</span><span>${escapeHtml(order.serviceDate||'未填写日期')}</span><span>${escapeHtml(order.location||'未填写城市/航线')}</span></div><div class="cleanup-change">${escapeHtml(label)}：<b>${escapeHtml(from)}</b> → <strong>${escapeHtml(to)}</strong></div></div><button class="button quiet" type="button" data-open-order="${escapeHtml(order.id)}">查看</button></div>`).join('')}`;
+}
+async function confirmCleanup(){
+  if(!cleanupPreviewOrders.length)return;
+  const field=byId('cleanupField').value,from=byId('cleanupFrom').value.trim(),to=byId('cleanupTo').value.trim();
+  if(field!==cleanupPreviewField||from!==cleanupPreviewFrom||to!==cleanupPreviewTo){renderCleanupPreview();return;}
+  if(!window.confirm(`确认把 ${cleanupPreviewOrders.length} 笔订单的“${cleanupFieldLabels[field]||field}”从“${from}”统一改为“${to}”吗？\n\n只修改这个字段，不会删除订单，也不会改变金额、成本、利润或付款状态。`))return;
+  const before=orders.map(order=>({...order}));
+  const ids=new Set(cleanupPreviewOrders.map(order=>order.id));
+  orders=orders.map(order=>ids.has(order.id)?{...order,[field]:to}:order);
+  const result=byId('cleanupPreview');
+  const button=result?.querySelector('[data-confirm-cleanup]');if(button){button.disabled=true;button.textContent='正在保存…';}
+  try{
+    await saveOrdersBatch();
+    const count=ids.size;cleanupPreviewOrders=[];result.className='cleanup-preview success';result.innerHTML=`已完成：${count} 笔订单的“${escapeHtml(cleanupFieldLabels[field]||field)}”已统一为“${escapeHtml(to)}”。如需继续清洗，请重新输入当前值和新值。`;renderAll();
+  }catch(error){
+    orders=before;saveLocalOrders();result.className='cleanup-preview error';result.innerHTML=`批量修改保存失败，已恢复修改前数据。${escapeHtml(error.message||'请稍后重试。')}`;renderAll();
+  }
+}
 function renderAll(){renderDashboard();renderOrders();renderLedger();renderQuality();renderCityDistribution();renderOtherIncome();}
 
 let selectedOtherIncomeOrderIds=[];
@@ -613,6 +655,8 @@ byId('aiProvider').addEventListener('change',event=>{if(event.target.value==='de
 byId('aiParseButton').addEventListener('click',parseAiAccounting);
 byId('aiFillButton').addEventListener('click',fillFromAiDraft);
 byId('scanDataQuality').addEventListener('click',()=>{byId('aiCleaningResults').innerHTML='<span class="ai-status">正在扫描订单字段和重复记录…</span>';setTimeout(renderDataCleaning,0);});
+byId('previewCleanup').addEventListener('click',renderCleanupPreview);
+document.addEventListener('click',event=>{if(event.target.closest('[data-confirm-cleanup]'))confirmCleanup();});
 document.querySelectorAll('[data-ai-example]').forEach(button=>button.addEventListener('click',()=>{byId('aiAccountingText').value=button.dataset.aiExample;byId('aiAccountingText').focus();}));
 const renderOrdersOriginal = renderOrders;
 renderOrders = function renderOrdersWithVisibleActions(){
