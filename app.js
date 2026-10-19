@@ -38,6 +38,7 @@ let paymentFilter = 'all';
 let invoiceFilter = 'all';
 let locationFilter = '';
 let supplierFilter = '';
+const AI_SETTINGS_STORAGE_KEY='qizhang-ai-settings-draft';
 let aiSettings = { provider:'openai-compatible', baseUrl:'https://api.openai.com/v1', model:'gpt-4o-mini', temperature:0.1, enabled:false };
 let aiDraft = null;
 const localOtherIncomes = JSON.parse(localStorage.getItem('qizhang-other-income') || '[]');
@@ -154,6 +155,15 @@ async function saveAiSettings(){
   try{if(!cloudReady||!currentUser)throw new Error('请先登录云端账户');const {error}=await supabaseClient.from('ai_settings').upsert({user_id:currentUser.id,provider:aiSettings.provider,base_url:aiSettings.baseUrl,model:aiSettings.model,temperature:aiSettings.temperature,enabled:aiSettings.enabled},{onConflict:'user_id'});if(error)throw error;syncAiSettingsForm();status.textContent='配置已保存';status.className='ai-status success';}catch(error){status.textContent=error.message;status.className='ai-status error';}finally{button.disabled=false;}
 }
 const aiIntentText=intent=>({order:'新增订单',other_income:'其它收入',other_expense:'其它支出',payment:'登记收款',commission:'登记返佣',unknown:'待确认'})[intent]||'待确认';
+async function loadAiSettings(){
+  if(!currentUser||!supabaseClient)return;
+  try{const {data,error}=await supabaseClient.from('ai_settings').select('provider,base_url,model,temperature,enabled').eq('user_id',currentUser.id).maybeSingle();if(error)throw error;if(data){aiSettings={provider:data.provider||'openai-compatible',baseUrl:data.base_url||'https://api.openai.com/v1',model:data.model||'gpt-4o-mini',temperature:Number(data.temperature??0.1),enabled:Boolean(data.enabled)};localStorage.removeItem(AI_SETTINGS_STORAGE_KEY);}else{const draft=JSON.parse(localStorage.getItem(AI_SETTINGS_STORAGE_KEY)||'null');if(draft)aiSettings={...aiSettings,...draft};}syncAiSettingsForm();}catch(error){byId('aiConfigStatus').textContent='AI配置读取失败';console.warn('AI settings unavailable',error.message);}
+}
+async function saveAiSettings(){
+  const status=byId('aiSettingsStatus'),button=byId('aiSettingsForm').querySelector('button[type="submit"]');button.disabled=true;status.textContent='正在保存…';status.className='ai-status';
+  aiSettings={provider:byId('aiProvider').value,baseUrl:byId('aiBaseUrl').value.trim()||'https://api.openai.com/v1',model:byId('aiModel').value.trim()||'gpt-4o-mini',temperature:Math.min(.5,Math.max(0,Number(byId('aiTemperature').value||.1))),enabled:byId('aiEnabled').checked};localStorage.setItem(AI_SETTINGS_STORAGE_KEY,JSON.stringify(aiSettings));
+  try{if(!cloudReady||!currentUser)throw new Error('请先登录云端账户');const {data,error}=await supabaseClient.from('ai_settings').upsert({user_id:currentUser.id,provider:aiSettings.provider,base_url:aiSettings.baseUrl,model:aiSettings.model,temperature:aiSettings.temperature,enabled:aiSettings.enabled},{onConflict:'user_id'}).select('provider,base_url,model,temperature,enabled').single();if(error)throw error;aiSettings={provider:data.provider,baseUrl:data.base_url,model:data.model,temperature:Number(data.temperature),enabled:Boolean(data.enabled)};syncAiSettingsForm();status.textContent='配置已保存并同步到云端';status.className='ai-status success';}catch(error){status.textContent=`云端保存失败：${error.message}，已保留本机草稿`;status.className='ai-status error';}finally{button.disabled=false;}
+}
 function aiValue(value){return value===null||value===undefined?'':String(value);}
 const escapeHtml=value=>aiValue(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 function renderAiDraft(){
@@ -552,6 +562,7 @@ byId('dashboardDateField').addEventListener('change',e=>{dashboardDateField=e.ta
 byId('authForm').addEventListener('submit',event=>{event.preventDefault();signIn();});
 byId('authSignUp').addEventListener('click',()=>signUp());
 byId('aiSettingsForm').addEventListener('submit',event=>{event.preventDefault();saveAiSettings();});
+byId('aiProvider').addEventListener('change',event=>{if(event.target.value==='deepseek'){if(!byId('aiBaseUrl').value||byId('aiBaseUrl').value.includes('openai.com'))byId('aiBaseUrl').value='https://api.deepseek.com/v1';if(!byId('aiModel').value||byId('aiModel').value==='gpt-4o-mini')byId('aiModel').value='deepseek-chat';}else if(event.target.value==='openai-compatible'&&byId('aiBaseUrl').value.includes('deepseek.com')){byId('aiBaseUrl').value='https://api.openai.com/v1';if(byId('aiModel').value==='deepseek-chat')byId('aiModel').value='gpt-4o-mini';}});
 byId('aiParseButton').addEventListener('click',parseAiAccounting);
 byId('aiFillButton').addEventListener('click',fillFromAiDraft);
 document.querySelectorAll('[data-ai-example]').forEach(button=>button.addEventListener('click',()=>{byId('aiAccountingText').value=button.dataset.aiExample;byId('aiAccountingText').focus();}));
