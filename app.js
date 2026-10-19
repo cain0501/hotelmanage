@@ -397,10 +397,35 @@ function dataCleaningEntries(){
   Object.entries(groups).filter(([,list])=>list.length>1).forEach(([key,list])=>list.forEach(order=>entries.push({order,kind:'疑似重复',detail:`匹配 ${list.length} 笔 · ${key}`})));
   return entries;
 }
+function serviceDateGap(a,b){const first=Date.parse(`${a||''}T00:00:00`),second=Date.parse(`${b||''}T00:00:00`);return Number.isFinite(first)&&Number.isFinite(second)?Math.abs(first-second)/86400000:null;}
+function dataCleaningEntries(){
+  const entries=[];
+  orders.forEach(order=>{
+    const missing=[];
+    if(!order.customer)missing.push('客户');if(!order.serviceDate)missing.push(order.type==='hotel'?'入住日期':'出发日期');if(!order.supplier)missing.push(order.type==='hotel'?'酒店':'航司');if(!order.product)missing.push(order.type==='hotel'?'房型':'航班');if(!order.gmv)missing.push('GMV');if(!isCommissionOrder(order)&&order.gmv&&!Number(order.cost))missing.push('成本金额');if(invoiceStatus(order)==='issued'&&!order.invoiceCompany)missing.push('开票公司');
+    if(missing.length)entries.push({order,kind:'缺失字段',detail:`缺少：${missing.join('、')}`});
+  });
+  const groups={};orders.filter(order=>order.confirmation).forEach(order=>{(groups[order.confirmation] ||= []).push(order);});
+  Object.values(groups).filter(list=>list.length>1).forEach(list=>{
+    list.forEach((order,index)=>list.slice(index+1).forEach(other=>{
+      const sameBooking=order.type==='hotel'&&other.type==='hotel'&&order.customer===other.customer&&order.supplier===other.supplier&&order.location===other.location;
+      const gap=serviceDateGap(order.serviceDate,other.serviceDate);
+      const kind=sameBooking&&gap===1?'续住关联':sameBooking&&gap===0?'疑似重复':'需要核对';
+      const detail=kind==='续住关联'?`同确认号 ${order.confirmation}，入住日期相差1天，建议保留为续住拆单`:kind==='疑似重复'?`同确认号、同入住日期，匹配 ${list.length} 笔`:`同确认号 ${order.confirmation}，客户/酒店/日期存在差异`;
+      entries.push({order,kind,detail});entries.push({order:other,kind,detail});
+    }));
+  });
+  return entries.filter((item,index,list)=>list.findIndex(candidate=>candidate.order.id===item.order.id&&candidate.kind===item.kind&&candidate.detail===item.detail)===index);
+}
 function renderDataCleaning(){
   const result=byId('aiCleaningResults');if(!result)return;const entries=dataCleaningEntries();
   if(!entries.length){result.innerHTML='<div class="ai-clean-empty">扫描完成，暂未发现缺失字段或疑似重复订单。</div>';return;}
   result.innerHTML=entries.slice(0,30).map(item=>`<div class="ai-clean-row"><span class="status ${item.kind==='疑似重复'?'partial':'unpaid'}">${escapeHtml(item.kind)}</span><div><b>${escapeHtml(orderCode(item.order))}</b><small>${escapeHtml(item.detail)} · ${escapeHtml(item.order.supplier||'未填写供应商')} · ${escapeHtml(item.order.customer||'未填写客户')}</small></div><button class="button quiet" data-open-order="${escapeHtml(item.order.id)}">查看</button></div>`).join('')+(entries.length>30?`<span class="ai-status">共发现 ${entries.length} 个问题，当前显示前30个。</span>`:'');
+}
+function renderDataCleaning(){
+  const result=byId('aiCleaningResults');if(!result)return;const entries=dataCleaningEntries();
+  if(!entries.length){result.innerHTML='<div class="ai-clean-empty">扫描完成，暂未发现缺失字段、续住关联或疑似重复订单。</div>';return;}
+  result.innerHTML=entries.slice(0,30).map(item=>{const badgeClass=item.kind==='疑似重复'?'partial':item.kind==='续住关联'?'paid':'unpaid';return `<div class="ai-clean-row"><span class="status ${badgeClass}">${escapeHtml(item.kind)}</span><div><b>${escapeHtml(orderCode(item.order))}</b><small>${escapeHtml(item.detail)} · ${escapeHtml(item.order.supplier||'未填写供应商')} · ${escapeHtml(item.order.customer||'未填写客户')}</small></div><button class="button quiet" data-open-order="${escapeHtml(item.order.id)}">查看</button></div>`}).join('')+(entries.length>30?`<span class="ai-status">共发现 ${entries.length} 个问题，当前显示前30个。</span>`:'');
 }
 function renderAll(){renderDashboard();renderOrders();renderLedger();renderQuality();renderCityDistribution();renderOtherIncome();}
 
