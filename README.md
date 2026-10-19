@@ -26,3 +26,13 @@
 部署到 GitHub Pages 后直接打开网站并登录即可。也可以通过本地静态服务器打开，直接双击 `index.html` 可能受浏览器跨域策略影响。
 
 登录后，新增、编辑、收款登记、其它收入和 Excel 导入都会写入 Supabase。侧边栏的“上传本地数据”可把当前浏览器旧账本迁移到云端，同编号记录会更新，不同编号记录会保留。
+
+## AI 一句话记账
+
+1. 在 Supabase SQL Editor 执行最新的 `supabase-schema.sql`，新增 `ai_settings` 表。
+2. 部署 `supabase/functions/ai-accounting` Edge Function。
+3. 在 Supabase Edge Function Secrets 中设置 `AI_API_KEY`，不要把 API Key 写进前端或 GitHub。
+4. 网站登录后打开“AI一句话记账”，填写接口地址、模型名称并启用。
+5. 输入自然语言，点击“识别并生成草稿”，确认识别结果后再填入订单或其它收入表单保存。
+
+默认按 OpenAI 兼容接口调用，DeepSeek 可填写 `https://api.deepseek.com/v1`。模型配置只保存接口地址、模型名和开关，密钥由 Edge Function Secret 管理。

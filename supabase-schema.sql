@@ -57,6 +57,17 @@ create table if not exists public.other_income (
   primary key (user_id, id)
 );
 
+create table if not exists public.ai_settings (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  provider text not null default 'openai-compatible',
+  base_url text not null default 'https://api.openai.com/v1',
+  model text not null default 'gpt-4o-mini',
+  temperature numeric not null default 0.1,
+  enabled boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 -- 对已经创建过但字段不完整的旧表补齐字段；重复执行不会报错。
 alter table public.orders add column if not exists user_id uuid references auth.users(id) on delete cascade;
 alter table public.orders add column if not exists order_code text;
@@ -104,6 +115,16 @@ alter table public.other_income add column if not exists expense numeric default
 alter table public.other_income add column if not exists created_at timestamptz default now();
 alter table public.other_income add column if not exists updated_at timestamptz default now();
 
+alter table public.ai_settings enable row level security;
+drop policy if exists "ai_settings_select_own" on public.ai_settings;
+drop policy if exists "ai_settings_insert_own" on public.ai_settings;
+drop policy if exists "ai_settings_update_own" on public.ai_settings;
+drop policy if exists "ai_settings_delete_own" on public.ai_settings;
+create policy "ai_settings_select_own" on public.ai_settings for select to authenticated using (user_id = auth.uid());
+create policy "ai_settings_insert_own" on public.ai_settings for insert to authenticated with check (user_id = auth.uid());
+create policy "ai_settings_update_own" on public.ai_settings for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "ai_settings_delete_own" on public.ai_settings for delete to authenticated using (user_id = auth.uid());
+
 create index if not exists orders_user_order_date_idx on public.orders (user_id, order_date desc);
 create index if not exists orders_user_service_date_idx on public.orders (user_id, service_date desc);
 create index if not exists other_income_user_date_idx on public.other_income (user_id, income_date desc);
@@ -146,6 +167,8 @@ drop trigger if exists orders_set_updated_at on public.orders;
 create trigger orders_set_updated_at before update on public.orders for each row execute function public.set_updated_at();
 drop trigger if exists other_income_set_updated_at on public.other_income;
 create trigger other_income_set_updated_at before update on public.other_income for each row execute function public.set_updated_at();
+drop trigger if exists ai_settings_set_updated_at on public.ai_settings;
+create trigger ai_settings_set_updated_at before update on public.ai_settings for each row execute function public.set_updated_at();
 
 -- 开启跨设备实时刷新；重复执行时忽略“已存在于 publication”的提示。
 do $$
