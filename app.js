@@ -38,6 +38,9 @@ let paymentFilter = 'all';
 let invoiceFilter = 'all';
 let locationFilter = '';
 let supplierFilter = '';
+let qualityIssueFilter = 'all';
+let qualityTypeFilter = 'all';
+let qualitySearch = '';
 const AI_SETTINGS_STORAGE_KEY='qizhang-ai-settings-draft';
 let aiSettings = { provider:'openai-compatible', baseUrl:'https://api.openai.com/v1', model:'gpt-4o-mini', temperature:0.1, enabled:false };
 let aiDraft = null;
@@ -380,9 +383,25 @@ function renderLedger() {
   byId('ledgerTable').innerHTML=rows.map(r=>`<tr><td>${dateFmt(r.date)}</td><td><span class="status ${r.amount>=0?'paid':'unpaid'}">${r.kind}</span></td><td>${r.order.id}</td><td>${r.party}</td><td>${r.note}</td><td class="money amount ${r.amount>=0?'income':'expense'}">${r.amount>=0?'+':'−'}${compactCurrency(Math.abs(r.amount))}</td></tr>`).join('') || '<tr><td colspan="6"><div class="empty-state">暂无资金流水</div></td></tr>';
 }
 function renderOtherIncome(){const total=otherIncomes.reduce((n,item)=>n+Number(item.amount||0),0),expense=otherIncomes.reduce((n,item)=>n+Number(item.expense||0),0);byId('otherIncomeSummary').innerHTML=`<article><p>其它收入</p><strong class="profit-positive">${compactCurrency(total)}</strong></article><article><p>其它支出</p><strong class="profit-negative">${compactCurrency(expense)}</strong></article><article><p>净额</p><strong>${compactCurrency(total-expense)}</strong></article>`;byId('otherIncomeTable').innerHTML=otherIncomes.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(item=>{const linked=incomeOrderIds(item).map(id=>orders.find(order=>order.id===id)).filter(Boolean);const net=Number(item.amount||0)-Number(item.expense||0);return `<tr><td>${dateFmt(item.date)}</td><td><strong>${item.name}</strong></td><td>${item.payer||'—'}</td><td>${item.payee||'—'}</td><td>${linked.length?`<div class="income-order-links">${linked.map(order=>`<span class="order-code">${orderCode(order)}</span>`).join('')}</div><small>${linked.length} 笔订单</small>`:'未关联订单'}</td><td class="money">${compactCurrency(item.amount)}</td><td class="money profit-negative">${compactCurrency(item.expense)}</td><td class="money ${net>=0?'profit-positive':'profit-negative'}">${compactCurrency(net)}</td><td class="row-actions"><button class="button quiet" data-edit-income="${item.id}" aria-label="编辑">编辑</button><button class="button quiet danger" data-delete-income="${item.id}" aria-label="删除">删除</button></td></tr>`}).join('')||'<tr><td colspan="9"><div class="empty-state">还没有其它收入记录</div></td></tr>';}
+const qualityKindLabels={missing:'资料缺失',payment:'待收款 / 待返佣',cost:'成本异常',paymentStatus:'付款状态异常',duplicate:'疑似重复',extension:'续住关联',review:'需要核对'};
+const qualityKindDescriptions={missing:'补齐客户、日期、供应商、房型、GMV、成本或开票公司等字段。',payment:'确认客户实收金额，或补登记平台返佣到账。',cost:'确认是否为赠送、未结算，或遗漏成本。',paymentStatus:'核对订单当前付款状态和收款记录。',duplicate:'核对确认号、客户、酒店和入住日期，避免重复记账。',extension:'同确认号但入住日期相差一天，建议保留为独立续住订单。',review:'确认订单信息差异是否符合实际业务。'};
+function qualityEntries(){
+  const grouped=new Map();
+  const add=(order,kind,detail)=>{const key=`${order.id}|${kind}`;if(!grouped.has(key))grouped.set(key,{order,kind,details:[]});const entry=grouped.get(key);if(detail&&!entry.details.includes(detail))entry.details.push(detail);};
+  issueEntries().forEach(({order,issue})=>{const kind=issue.includes('待收')||issue.includes('待返')?'payment':issue.includes('成本')?'cost':issue.includes('缺少')?'missing':issue.includes('付款状态')?'paymentStatus':'review';add(order,kind,issue);});
+  dataCleaningEntries().forEach(({order,kind,detail})=>{const mapped=kind==='缺失字段'?'missing':kind==='疑似重复'?'duplicate':kind==='续住关联'?'extension':'review';add(order,mapped,detail);});
+  return [...grouped.values()].map(entry=>({...entry,detail:entry.details.join('；')}));
+}
+function filteredQualityEntries(){
+  const query=qualitySearch.trim().toLowerCase();
+  return qualityEntries().filter(({order,kind,detail})=>(qualityIssueFilter==='all'||kind===qualityIssueFilter)&&(qualityTypeFilter==='all'||order.type===qualityTypeFilter)&&(!query||`${orderCode(order)} ${order.id} ${order.customer||''} ${order.booker||''} ${order.supplier||''} ${order.confirmation||''} ${order.location||''} ${detail}`.toLowerCase().includes(query)));
+}
 function renderQuality() {
-  const issues=issueEntries(); const groups=[['待收款',issues.filter(i=>i.issue==='存在待收款'),'记录客户实收金额或补齐收款流水。'],['成本异常',issues.filter(i=>i.issue==='成本金额为 0'),'确认是否为赠送、未结算，或遗漏成本。'],['资料缺失',issues.filter(i=>i.issue.includes('缺少')),'补齐业务日期、确认号或出票说明。']];
-  byId('issueGrid').innerHTML=groups.map(([title,list,desc])=>`<article class="issue-card"><strong class="issue-count">${list.length}</strong><h3>${title}</h3><p>${desc}</p>${list.slice(0,4).map(({order,issue})=>`<button class="text-button" data-detail="${order.id}">${order.id} · ${order.customer} ›</button>`).join('<br>')||'<span class="muted">暂无异常</span>'}</article>`).join('');
+  const entries=filteredQualityEntries();
+  byId('issueCount').textContent=qualityEntries().length;
+  byId('qualityFilterSummary').innerHTML=`当前显示 <strong>${entries.length}</strong> 条待办 · 共 <strong>${qualityEntries().length}</strong> 条可核对记录`;
+  const groupOrder=['payment','cost','missing','paymentStatus','duplicate','extension','review'];
+  byId('issueGrid').innerHTML=groupOrder.filter(kind=>entries.some(entry=>entry.kind===kind)).map(kind=>{const list=entries.filter(entry=>entry.kind===kind);return `<article class="issue-card"><strong class="issue-count">${list.length}</strong><h3>${qualityKindLabels[kind]}</h3><p>${qualityKindDescriptions[kind]}</p><div class="quality-issue-list">${list.map(({order,detail})=>`<button class="quality-issue-row" data-detail="${escapeHtml(order.id)}"><b>${escapeHtml(orderCode(order))}</b><span>${escapeHtml(order.customer||'未填写客户')} · ${escapeHtml(order.supplier||'未填写供应商')}</span><small>${escapeHtml(detail)}${order.confirmation?` · 确认号 ${escapeHtml(order.confirmation)}`:''}</small></button>`).join('')}</div></article>`}).join('')||'<div class="empty-state">当前筛选下暂无待办问题</div>';
 }
 function dataCleaningEntries(){
   const entries=[];
@@ -564,6 +583,10 @@ byId('locationFilter').addEventListener('input',e=>{locationFilter=e.target.valu
 byId('supplierFilter').addEventListener('input',e=>{supplierFilter=e.target.value;});
 byId('applyFilters').addEventListener('click',()=>{dateField=byId('dateField').value;dateStart=byId('dateStart').value;dateEnd=byId('dateEnd').value;activeType=byId('typeSelect').value;statusFilter=byId('statusFilter').value;paymentFilter=byId('paymentFilter').value;invoiceFilter=byId('invoiceFilter').value;locationFilter=byId('locationFilter').value.trim();supplierFilter=byId('supplierFilter').value.trim();searchTerm=byId('orderSearch').value.trim();orderPage=1;renderOrders();byId('applyFilters').classList.add('filter-applied');setTimeout(()=>byId('applyFilters').classList.remove('filter-applied'),450);});
 byId('clearFilters').addEventListener('click',()=>{activeType='all';dateField='orderDate';dateStart='';dateEnd='';statusFilter='all';paymentFilter='all';invoiceFilter='all';locationFilter='';supplierFilter='';searchTerm='';orderPage=1;byId('typeSelect').value='all';byId('dateField').value='orderDate';byId('dateStart').value='';byId('dateEnd').value='';byId('paymentFilter').value='all';byId('invoiceFilter').value='all';byId('locationFilter').value='';byId('supplierFilter').value='';byId('orderSearch').value='';updateStatusOptions();renderOrders();});
+byId('qualityIssueFilter').addEventListener('change',event=>{qualityIssueFilter=event.target.value;renderQuality();});
+byId('qualityTypeFilter').addEventListener('change',event=>{qualityTypeFilter=event.target.value;renderQuality();});
+byId('qualitySearch').addEventListener('input',event=>{qualitySearch=event.target.value;renderQuality();});
+byId('clearQualityFilters').addEventListener('click',()=>{qualityIssueFilter='all';qualityTypeFilter='all';qualitySearch='';byId('qualityIssueFilter').value='all';byId('qualityTypeFilter').value='all';byId('qualitySearch').value='';renderQuality();});
 ['gmv','cost','rooms','nights','tickets'].forEach(id=>byId(id).addEventListener('input',refreshFormPreview));
 byId('settlementMode').addEventListener('change',syncSettlementFields);
 ['commissionExpected','commissionReceived','directCost'].forEach(id=>byId(id).addEventListener('input',refreshFormPreview));
