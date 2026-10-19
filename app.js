@@ -380,6 +380,28 @@ function renderQuality() {
   const issues=issueEntries(); const groups=[['待收款',issues.filter(i=>i.issue==='存在待收款'),'记录客户实收金额或补齐收款流水。'],['成本异常',issues.filter(i=>i.issue==='成本金额为 0'),'确认是否为赠送、未结算，或遗漏成本。'],['资料缺失',issues.filter(i=>i.issue.includes('缺少')),'补齐业务日期、确认号或出票说明。']];
   byId('issueGrid').innerHTML=groups.map(([title,list,desc])=>`<article class="issue-card"><strong class="issue-count">${list.length}</strong><h3>${title}</h3><p>${desc}</p>${list.slice(0,4).map(({order,issue})=>`<button class="text-button" data-detail="${order.id}">${order.id} · ${order.customer} ›</button>`).join('<br>')||'<span class="muted">暂无异常</span>'}</article>`).join('');
 }
+function dataCleaningEntries(){
+  const entries=[];
+  orders.forEach(order=>{
+    const missing=[];
+    if(!order.customer)missing.push('客户');
+    if(!order.serviceDate)missing.push(order.type==='hotel'?'入住日期':'出发日期');
+    if(!order.supplier)missing.push(order.type==='hotel'?'酒店':'航司');
+    if(!order.product)missing.push(order.type==='hotel'?'房型':'航班');
+    if(!order.gmv)missing.push('GMV');
+    if(!isCommissionOrder(order)&&order.gmv&&!Number(order.cost))missing.push('成本金额');
+    if(invoiceStatus(order)==='issued'&&!order.invoiceCompany)missing.push('开票公司');
+    if(missing.length)entries.push({order,kind:'缺失字段',detail:`缺少：${missing.join('、')}`});
+  });
+  const groups={};orders.forEach(order=>{const key=order.confirmation?`确认号：${order.confirmation}`:`${order.customer}|${order.supplier}|${order.serviceDate}|${order.gmv}`;(groups[key] ||= []).push(order);});
+  Object.entries(groups).filter(([,list])=>list.length>1).forEach(([key,list])=>list.forEach(order=>entries.push({order,kind:'疑似重复',detail:`匹配 ${list.length} 笔 · ${key}`})));
+  return entries;
+}
+function renderDataCleaning(){
+  const result=byId('aiCleaningResults');if(!result)return;const entries=dataCleaningEntries();
+  if(!entries.length){result.innerHTML='<div class="ai-clean-empty">扫描完成，暂未发现缺失字段或疑似重复订单。</div>';return;}
+  result.innerHTML=entries.slice(0,30).map(item=>`<div class="ai-clean-row"><span class="status ${item.kind==='疑似重复'?'partial':'unpaid'}">${escapeHtml(item.kind)}</span><div><b>${escapeHtml(orderCode(item.order))}</b><small>${escapeHtml(item.detail)} · ${escapeHtml(item.order.supplier||'未填写供应商')} · ${escapeHtml(item.order.customer||'未填写客户')}</small></div><button class="button quiet" data-open-order="${escapeHtml(item.order.id)}">查看</button></div>`).join('')+(entries.length>30?`<span class="ai-status">共发现 ${entries.length} 个问题，当前显示前30个。</span>`:'');
+}
 function renderAll(){renderDashboard();renderOrders();renderLedger();renderQuality();renderCityDistribution();renderOtherIncome();}
 
 let selectedOtherIncomeOrderIds=[];
@@ -565,6 +587,7 @@ byId('aiSettingsForm').addEventListener('submit',event=>{event.preventDefault();
 byId('aiProvider').addEventListener('change',event=>{if(event.target.value==='deepseek'){if(!byId('aiBaseUrl').value||byId('aiBaseUrl').value.includes('openai.com'))byId('aiBaseUrl').value='https://api.deepseek.com/v1';if(!byId('aiModel').value||byId('aiModel').value==='gpt-4o-mini')byId('aiModel').value='deepseek-chat';}else if(event.target.value==='openai-compatible'&&byId('aiBaseUrl').value.includes('deepseek.com')){byId('aiBaseUrl').value='https://api.openai.com/v1';if(byId('aiModel').value==='deepseek-chat')byId('aiModel').value='gpt-4o-mini';}});
 byId('aiParseButton').addEventListener('click',parseAiAccounting);
 byId('aiFillButton').addEventListener('click',fillFromAiDraft);
+byId('scanDataQuality').addEventListener('click',()=>{byId('aiCleaningResults').innerHTML='<span class="ai-status">正在扫描订单字段和重复记录…</span>';setTimeout(renderDataCleaning,0);});
 document.querySelectorAll('[data-ai-example]').forEach(button=>button.addEventListener('click',()=>{byId('aiAccountingText').value=button.dataset.aiExample;byId('aiAccountingText').focus();}));
 const renderOrdersOriginal = renderOrders;
 renderOrders = function renderOrdersWithVisibleActions(){

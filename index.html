@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261019-16" />
+    <link rel="stylesheet" href="styles.css?v=20261019-17" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -132,6 +132,7 @@
       .ai-hero{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:27px 31px;margin-bottom:17px;background:linear-gradient(118deg,#173f39,#285f54 60%,#b8833e);border-radius:8px;color:#fff;box-shadow:var(--shadow);overflow:hidden;position:relative}
       .ai-hero h2{margin:0 0 7px;font:700 27px "Noto Serif SC",serif}.ai-hero p:not(.eyebrow){margin:0;color:#d6e6de;font-size:13px}.ai-hero-mark{font:500 56px "DM Mono",monospace;color:#f3d39b;opacity:.9;transform:rotate(-8deg)}
       .ai-layout{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(310px,.75fr);gap:17px}.ai-entry-panel,.ai-settings-panel{min-width:0}.ai-entry-body,.ai-draft-panel,.ai-settings-form{padding:0 20px 20px}.ai-textarea{width:100%;resize:vertical;min-height:150px;line-height:1.7;padding:13px;background:#fffdf9;border:1px solid var(--line);border-radius:5px;color:var(--ink);font:14px inherit}.ai-textarea:focus{border-color:var(--gold);outline:0;box-shadow:0 0 0 3px rgba(189,132,59,.12)}.ai-examples{display:flex;flex-wrap:wrap;gap:4px 14px;margin:9px 0 17px}.ai-examples .text-button{padding:0;color:#8e6737}.ai-entry-actions{display:flex;justify-content:space-between;align-items:center;gap:12px}.ai-status{color:#8c877d;font-size:11px;line-height:1.5}.ai-status.error{color:#a84d3e}.ai-status.success{color:#267255}.ai-draft-panel{margin:0 20px 20px;padding:18px;background:#f4eee3;border:1px solid #e2d5bf;border-radius:6px}.ai-draft-head{display:flex;justify-content:space-between;align-items:start;gap:12px}.ai-draft-head h3{margin:0;font:700 16px "Noto Serif SC",serif}.ai-draft-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:14px 0}.ai-draft-summary div{padding:9px 10px;background:#fffdf8;border-radius:4px}.ai-draft-summary span{display:block;color:#8d877d;font-size:10px;margin-bottom:3px}.ai-draft-summary b{font-size:12px;overflow-wrap:anywhere}.ai-draft-json{max-height:180px;overflow:auto;margin:0 0 16px;padding:10px;background:#183e38;color:#dce9df;border-radius:4px;font:10px/1.5 "DM Mono",monospace;white-space:pre-wrap}.ai-settings-form{display:grid;gap:13px}.ai-settings-form label{display:grid;gap:6px;color:#716d65;font-size:12px}.ai-settings-form input,.ai-settings-form select{width:100%}.ai-toggle{display:flex!important;grid-template-columns:none!important;align-items:center;display:flex!important;gap:8px!important}.ai-toggle input{width:auto}.ai-security-note{margin:0;padding:10px 11px;border-radius:4px;background:#f5efe4;color:#81796e;font-size:11px;line-height:1.6}.ai-security-note code{font-family:"DM Mono",monospace;color:#6f4e2c}.ai-draft-panel[hidden]{display:none}
+      .ai-clean-panel{margin:0 20px 20px;padding:18px;background:#fffdf8;border:1px solid var(--line);border-radius:6px}.ai-clean-panel>.ai-status{display:block;margin:9px 0 12px}.ai-cleaning-results{display:grid;gap:7px}.ai-clean-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:9px 10px;background:#f7f1e7;border-radius:4px;font-size:11px}.ai-clean-row .status{white-space:nowrap}.ai-clean-row small{display:block;color:#8b857a;margin-top:3px}.ai-clean-empty{padding:12px;background:#e8f2eb;color:#287052;border-radius:4px;font-size:11px}
       @media(max-width:900px){.ai-layout{grid-template-columns:1fr}.ai-settings-panel{order:-1}}
       @media(max-width:650px){.ai-hero{padding:22px 20px}.ai-hero h2{font-size:23px}.ai-hero-mark{font-size:40px}.ai-draft-summary{grid-template-columns:1fr}.ai-entry-actions{align-items:flex-start;flex-direction:column}.ai-entry-actions .button{width:100%}}
       [hidden]{display:none!important}
@@ -308,6 +309,11 @@
                 <pre id="aiDraftJson" class="ai-draft-json"></pre>
                 <div class="ai-entry-actions"><span class="ai-status">AI只负责识别，金额和利润仍由系统计算</span><button class="button primary" id="aiFillButton" type="button">填入对应表单</button></div>
               </div>
+              <div class="ai-clean-panel">
+                <div class="ai-draft-head"><div><p class="eyebrow">DATA CLEANUP</p><h3>扫描台账问题</h3></div><button class="button quiet" id="scanDataQuality" type="button">开始扫描</button></div>
+                <p class="ai-status">只扫描和定位，不会自动修改或删除订单。</p>
+                <div id="aiCleaningResults" class="ai-cleaning-results"><span class="ai-status">尚未扫描</span></div>
+              </div>
             </section>
             <section class="panel ai-settings-panel">
               <div class="panel-head"><div><p class="eyebrow">MODEL SETTINGS</p><h2>模型配置</h2></div><span id="aiConfigStatus" class="panel-caption">未配置</span></div>
@@ -462,6 +468,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261019-16"></script>
+    <script src="app.js?v=20261019-17"></script>
   </body>
 </html>
