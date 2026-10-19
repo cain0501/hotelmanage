@@ -898,6 +898,52 @@ renderOrders = function renderOrdersWithVisibleActions(){
   });
 };
 
+function assistantMessageMetadata(message){
+  if(!message?.metadata)return {};
+  if(typeof message.metadata==='object')return message.metadata;
+  try{return JSON.parse(message.metadata)||{};}catch{return {};}
+}
+
+function renderAssistantConversation(){
+  const panel=byId('assistantConversation');if(!panel)return;
+  const messages=assistantMessages.slice(-12);
+  panel.innerHTML=messages.length?messages.map(message=>{
+    const metadata=assistantMessageMetadata(message),analysis=metadata.analysis;
+    const created=escapeHtml(String(message.created_at||'').slice(0,16).replace('T',' '));
+    if(analysis){
+      const summary=analysis.summary||{};
+      const typeText=analysis.type==='hotel'?'酒店':analysis.type==='flight'?'机票':'酒店 + 机票';
+      const scope=`${analysis.scopeLabel||'全部数据'} · ${analysis.dateFieldLabel||'下单日期'} · ${typeText}${analysis.condition?` · ${analysis.condition}`:''}`;
+      return `<article class="assistant-message assistant assistant-analysis"><small>AI · ${created} · 确定性工具</small><p>${escapeHtml(message.content||analysis.answer||'统计已完成。')}</p><div class="assistant-analysis-metrics"><div><span>订单数</span><b>${Number(summary.orders||0)}</b></div><div><span>GMV</span><b>${compactCurrency(summary.gmv||0)}</b></div><div><span>房晚</span><b>${Number(summary.roomNights||0)}</b></div><div><span>订单利润</span><b>${compactCurrency(summary.profit||0)}</b></div></div><div class="assistant-analysis-scope">统计口径：${escapeHtml(scope)}</div></article>`;
+    }
+    const sources=Array.isArray(metadata.knowledge_sources)?metadata.knowledge_sources:[];
+    return `<article class="assistant-message ${message.role==='user'?'user':'assistant'}"><small>${message.role==='user'?'你':'AI'} · ${created}</small><p>${escapeHtml(message.content||'')}</p>${sources.length?`<div class="assistant-knowledge">参考知识：${sources.map(source=>escapeHtml(source.title||'未命名知识')).join('、')}</div>`:''}</article>`;
+  }).join(''):'<div class="assistant-message empty">当前会话会记住日期口径、筛选条件和已确认的业务规则。</div>';
+  panel.scrollTop=panel.scrollHeight;
+}
+
+async function runAssistantChat(question){
+  const button=byId('aiParseButton'),status=byId('aiAccountingStatus');
+  if(!aiSettings.enabled){status.textContent='请先在右侧启用模型配置';status.className='ai-status error';return;}
+  button.disabled=true;button.textContent='处理中…';status.textContent='AI 正在理解你的问题…';status.className='ai-status';
+  try{
+    const {data:sessionData}=await supabaseClient.auth.getSession();
+    const response=await fetch(`${SUPABASE_URL}/functions/v1/ai-accounting`,{method:'POST',headers:{Authorization:`Bearer ${sessionData.session?.access_token||''}`,'Content-Type':'application/json'},body:JSON.stringify({mode:'chat',text:question,conversation_id:assistantConversationId,...assistantModelContext()})});
+    const result=await response.json();if(!response.ok)throw new Error(result.error||'AI处理失败');
+    const data=result.data||{};
+    if(data.draft){aiDraft={data:data.draft};renderAiDraft();}
+    if(data.analysis){
+      analysisResult=data.analysis;byId('analysisResult').hidden=true;
+      const summaryCall=(result.tool_calls||[]).find(call=>call.name==='summarize_business');
+      if(summaryCall?.arguments)await saveAssistantContext({date_field:summaryCall.arguments.date_field,period_start:summaryCall.arguments.start||null,period_end:summaryCall.arguments.end||null,order_type:summaryCall.arguments.type||'all',city:summaryCall.arguments.location||'',supplier:summaryCall.arguments.supplier||'',booker:summaryCall.arguments.booker||''});
+    }
+    const answer=data.analysis?.answer||data.answer||(data.draft?`已生成${aiIntentText(data.draft.intent)}草稿，请确认后再填入表单。`:'当前没有可回答的内容。');
+    await saveAssistantMessage('assistant',answer,{intent:data.analysis?'business_query':data.draft?'accounting_draft':'general_assistance',analysis:data.analysis||null,knowledge_sources:data.knowledge_sources||[],unsupported:Boolean(data.unsupported),tool_calls:result.tool_calls||[]});
+    status.textContent=data.analysis?'统计完成，结果已加入对话。':data.draft?'已生成草稿，请确认后再填入表单。':'回答完成。';status.className='ai-status success';
+  }catch(error){status.textContent=error.message;status.className='ai-status error';}
+  finally{button.disabled=false;button.textContent='交给 AI 处理';}
+}
+
 async function initApp(){
   if(!supabaseClient){setAuthStatus('Supabase 客户端未加载，请检查网络后刷新页面。','error');return;}
   const {data,error}=await supabaseClient.auth.getSession();

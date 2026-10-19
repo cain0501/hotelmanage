@@ -145,6 +145,35 @@
       @media(max-width:650px){.auth-card{padding:26px 21px}.auth-actions{align-items:flex-start;flex-direction:column}}
       .quality-filter-panel{background:#fffdf8;border:1px solid var(--line);border-radius:7px;padding:17px 19px;margin-bottom:16px}.quality-filter-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;padding-bottom:13px;border-bottom:1px solid #eee7d9}.quality-filter-head h2{margin:0;font:700 17px "Noto Serif SC",serif}.quality-filter-head span{color:#8e887d;font-size:11px}.quality-filter-grid{display:grid;grid-template-columns:1fr 1fr minmax(180px,1.5fr) auto;align-items:end;gap:12px;padding-top:15px}.quality-filter-grid label{display:grid;gap:5px;color:#756f65;font-size:11px}.quality-filter-grid select,.quality-filter-grid input{width:100%;min-width:0;padding:8px 9px;font-size:12px}.quality-filter-summary{margin-top:12px;color:#8b857a;font-size:11px}.quality-filter-summary strong{color:#143b36;font-size:13px}.quality-issue-list{display:grid;gap:5px}.quality-issue-row{display:grid;gap:7px;padding:10px 0;border-top:1px solid #eee8dd;text-align:left}.quality-issue-row b{color:#8b6738;font:500 11px "DM Mono",monospace}.quality-issue-row span{color:#6f6a61;font-size:11px;line-height:1.45;overflow-wrap:anywhere}.quality-issue-row small{color:#918a80;font-size:10px;line-height:1.45;overflow-wrap:anywhere}.quality-issue-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.quality-smart-tag{display:inline-flex;padding:2px 6px;border-radius:999px;background:#e8f2eb;color:#287052;font-size:10px;white-space:nowrap}.quality-evidence,.quality-suggestion{display:block;padding:6px 8px;border-radius:4px}.quality-evidence{background:#f4eee3;color:#75684f!important}.quality-suggestion{background:#edf4f0;color:#287052!important}.quality-row-actions{display:flex;gap:7px;flex-wrap:wrap}.quality-row-actions .button{padding:5px 8px;font-size:10px}.quality-state{font-size:10px!important;color:#8b6738!important}.quality-state.processed{color:#287052!important}.quality-state.ignored{color:#8b857a!important}
       @media(max-width:800px){.quality-filter-grid{grid-template-columns:1fr 1fr}.quality-filter-grid .quality-filter-keyword{grid-column:1 / -1}.quality-filter-grid .button{width:100%}} @media(max-width:520px){.quality-filter-head{align-items:flex-start;flex-direction:column}.quality-filter-grid{grid-template-columns:1fr}.quality-filter-grid .quality-filter-keyword{grid-column:auto}}
+      /* AI 工作台改为连续对话布局，输入区固定在消息流下方。 */
+      .ai-entry-panel{display:flex;flex-direction:column;min-width:0}
+      .ai-entry-panel>.panel-head{order:1}
+      .ai-entry-panel>.assistant-conversation{order:2;flex:1;min-height:340px;max-height:480px;margin:0 20px 12px;padding:16px 14px;background:#f7f1e7;border:1px solid #e2d5bf;border-radius:9px;scroll-behavior:smooth}
+      .ai-entry-panel>.ai-draft-panel,.ai-entry-panel>#analysisResult{order:3}
+      .ai-entry-panel>.ai-entry-body{order:4;border-top:1px solid #eee7d9;padding:14px 20px 18px;background:#fffdf8}
+      .ai-entry-panel>.ai-clean-panel{order:5}
+      .assistant-message{width:fit-content;max-width:min(88%,760px);padding:10px 13px;border-radius:14px;font-size:13px;line-height:1.65;box-shadow:0 1px 0 rgba(20,59,54,.04)}
+      .assistant-message.user{justify-self:end;border-radius:14px 14px 4px 14px;background:#dcece4;color:#1c584a}
+      .assistant-message.assistant{justify-self:start;border-radius:14px 14px 14px 4px;background:#fffdf9;color:#514b43;border:1px solid #eee5d7}
+      .assistant-message small{display:block;margin-bottom:4px;color:#9a9287;font-size:10px}
+      .assistant-message p{margin:0;white-space:pre-wrap}
+      .assistant-message.empty{width:auto;max-width:none;padding:16px;background:transparent;border:0;box-shadow:none}
+      .assistant-analysis{width:min(92%,760px);padding:13px 14px;background:#173f39;color:#eef5ee;border:0}
+      .assistant-analysis small{color:#c2d9cd}
+      .assistant-analysis p{color:#eef5ee}
+      .assistant-analysis-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:12px}
+      .assistant-analysis-metrics div{padding:8px 9px;background:rgba(255,255,255,.1);border-radius:6px}
+      .assistant-analysis-metrics span{display:block;color:#b9d2c5;font-size:10px;margin-bottom:3px}
+      .assistant-analysis-metrics b{font:600 13px "DM Mono",monospace;color:#fff}
+      .assistant-analysis-scope{margin-top:11px;color:#c8ddd2;font-size:10px;line-height:1.5}
+      .assistant-knowledge{margin-top:9px;color:#8b6738;font-size:11px}
+      .ai-entry-body{display:grid;gap:10px}
+      .ai-textarea{min-height:84px;max-height:170px;padding:12px 13px;border-radius:8px}
+      .ai-examples{margin:0;gap:5px 14px}
+      .ai-entry-actions{align-items:center}
+      .ai-entry-actions .button{min-width:112px}
+      .ai-draft-panel{margin:0 20px 12px;border-radius:9px}
+      @media(max-width:650px){.ai-entry-panel>.assistant-conversation{min-height:300px;max-height:58vh;margin:0 12px 10px;padding:12px 10px}.ai-entry-panel>.ai-entry-body{padding:12px}.assistant-message,.assistant-analysis{max-width:96%;width:auto}.assistant-analysis-metrics{grid-template-columns:1fr 1fr}.ai-entry-actions{align-items:flex-start}}
     </style>
   </head>
   <body>
@@ -182,7 +211,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-          <small class="app-version">版本 20261020-28</small>
+          <small class="app-version">版本 20261020-29</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -512,6 +541,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261020-28"></script>
+    <script src="app.js?v=20261020-29"></script>
   </body>
 </html>
