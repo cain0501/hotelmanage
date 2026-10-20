@@ -219,7 +219,7 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
       if (!inDateRange(order.service_date, 'service_date_start', 'service_date_end')) return false;
       const searchText = String(args.search_text || '').trim();
       if (searchText) {
-        const haystack = `${order.order_code || ''} ${order.id || ''} ${order.confirmation || ''} ${order.customer || ''}`.toLocaleLowerCase();
+        const haystack = `${order.order_code || ''} ${order.id || ''} ${order.confirmation || ''} ${order.customer || ''} ${order.booker || ''} ${order.location || ''} ${order.supplier || ''} ${order.product || ''}`.toLocaleLowerCase();
         if (!haystack.includes(searchText.toLocaleLowerCase())) return false;
       }
       return normalized(order[target]) === normalized(fromValue);
