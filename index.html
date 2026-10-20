@@ -205,7 +205,7 @@
       .assistant-history-item:hover{background:#fbf7ef;border-color:#d8c6aa}
       .assistant-history-main small{margin-top:4px}
       .assistant-history-empty{grid-column:1 / -1}
-      .ai-entry-panel>.assistant-conversation{flex:0 1 auto;min-height:180px;max-height:360px;margin-bottom:14px;padding:14px 13px}
+      .ai-entry-panel>.assistant-conversation{flex:0 1 auto;min-height:300px;max-height:520px;margin-bottom:14px;padding:14px 13px}
       .ai-entry-panel>.assistant-conversation:has(.assistant-message.empty){min-height:120px;max-height:140px}
       .ai-entry-panel>.assistant-conversation:has(.assistant-message.empty) .assistant-message.empty{align-self:center;justify-self:stretch;text-align:center}
       .ai-textarea{height:112px;min-height:112px;max-height:220px}
@@ -217,7 +217,7 @@
         .assistant-toolbar-actions .button{width:100%;padding:8px 6px}
         .assistant-history{grid-template-columns:1fr;margin-left:12px;margin-right:12px;padding:8px;max-height:260px}
         .assistant-history-item{min-height:54px}
-        .ai-entry-panel>.assistant-conversation{min-height:160px;max-height:52vh;margin-left:12px;margin-right:12px;padding:12px 10px}
+        .ai-entry-panel>.assistant-conversation{min-height:230px;max-height:65vh;margin-left:12px;margin-right:12px;padding:12px 10px}
         .ai-entry-panel>.assistant-conversation:has(.assistant-message.empty){min-height:112px;max-height:128px}
         .ai-textarea{height:108px;min-height:108px}
       }
@@ -262,7 +262,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-           <small class="app-version">版本 20261020-33</small>
+           <small class="app-version">版本 20261020-34</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -605,6 +605,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261020-33"></script>
+    <script src="app.js?v=20261020-34"></script>
   </body>
 </html>
