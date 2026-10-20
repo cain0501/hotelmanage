@@ -190,7 +190,38 @@
 .sidebar-bottom-nav{padding-top:14px;border-top:1px solid rgba(255,255,255,.13)}.sidebar-bottom-nav .nav-item{width:100%}.knowledge-view,.settings-view{min-width:0}.knowledge-page-mount,.settings-page-mount{max-width:980px}.knowledge-page-panel,.settings-page-panel{grid-column:auto!important;min-width:0}.knowledge-view .knowledge-panel,.settings-view .ai-settings-panel{margin:0}.knowledge-page-mark{font:500 42px "DM Mono",monospace;color:#bd843b;opacity:.78}.ai-layout .ai-entry-panel{grid-column:1 / -1}
 <style>
 .assistant-toolbar{display:flex;justify-content:space-between;align-items:center;gap:14px;margin:0 20px 10px;padding:10px 12px;background:#f7f1e7;border:1px solid #e7ddcc;border-radius:6px}.assistant-toolbar>div:first-child{min-width:0}.assistant-toolbar span{display:block;color:#143b36;font-size:12px;font-weight:600}.assistant-toolbar small{display:block;color:#8d877d;font-size:10px;margin-top:3px}.assistant-toolbar-actions{display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap}.assistant-toolbar-actions .button{padding:6px 9px;font-size:11px;white-space:nowrap}.assistant-history{display:grid;gap:6px;margin:0 20px 10px;padding:10px;background:#fffdf8;border:1px solid #e7ddcc;border-radius:6px;max-height:250px;overflow:auto}.assistant-history-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 9px;background:#f7f1e7;border-radius:4px}.assistant-history-main{min-width:0}.assistant-history-main strong,.assistant-history-main small{display:block;overflow-wrap:anywhere}.assistant-history-main strong{color:#143b36;font-size:11px}.assistant-history-main small{color:#8d877d;font-size:10px;margin-top:3px}.assistant-history-item.archived{opacity:.68}.assistant-history-actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}.assistant-history-actions .button{padding:5px 8px;font-size:10px}.assistant-history-empty{color:#8d877d;font-size:11px;padding:5px}
-</style>
+    </style>
+    <style>
+      /* AI workspace layout refinement: compact history, calmer chat rhythm, responsive input. */
+      #aiView>.ai-hero,#aiView>.ai-layout{width:min(1180px,100%);margin-left:auto;margin-right:auto}
+      .ai-entry-panel{overflow:hidden}
+      .assistant-toolbar{gap:18px;margin-bottom:12px;padding:12px 14px;border-radius:8px}
+      .assistant-toolbar span{font-size:13px;font-weight:700}
+      .assistant-toolbar small{margin-top:4px}
+      .assistant-toolbar-actions .button{padding:7px 10px}
+      .assistant-toolbar-actions #newAssistantConversation{background:#143b36;color:#fff;border-color:#143b36;box-shadow:0 3px 9px rgba(20,59,54,.12)}
+      .assistant-history{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px;padding:10px;border-radius:8px;max-height:220px}
+      .assistant-history-item{min-height:58px;padding:10px 11px;border:1px solid transparent;border-radius:6px;transition:border-color .18s,background .18s}
+      .assistant-history-item:hover{background:#fbf7ef;border-color:#d8c6aa}
+      .assistant-history-main small{margin-top:4px}
+      .assistant-history-empty{grid-column:1 / -1}
+      .ai-entry-panel>.assistant-conversation{flex:0 1 auto;min-height:180px;max-height:360px;margin-bottom:14px;padding:14px 13px}
+      .ai-entry-panel>.assistant-conversation:has(.assistant-message.empty){min-height:120px;max-height:140px}
+      .ai-entry-panel>.assistant-conversation:has(.assistant-message.empty) .assistant-message.empty{align-self:center;justify-self:stretch;text-align:center}
+      .ai-textarea{height:112px;min-height:112px;max-height:220px}
+      @media(max-width:900px){.assistant-history{grid-template-columns:repeat(2,minmax(0,1fr))}}
+      @media(max-width:720px){
+        #aiView>.ai-hero,#aiView>.ai-layout{width:100%}
+        .assistant-toolbar{align-items:flex-start;flex-direction:column;gap:11px;margin-left:12px;margin-right:12px;padding:11px 12px}
+        .assistant-toolbar-actions{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+        .assistant-toolbar-actions .button{width:100%;padding:8px 6px}
+        .assistant-history{grid-template-columns:1fr;margin-left:12px;margin-right:12px;padding:8px;max-height:260px}
+        .assistant-history-item{min-height:54px}
+        .ai-entry-panel>.assistant-conversation{min-height:160px;max-height:52vh;margin-left:12px;margin-right:12px;padding:12px 10px}
+        .ai-entry-panel>.assistant-conversation:has(.assistant-message.empty){min-height:112px;max-height:128px}
+        .ai-textarea{height:108px;min-height:108px}
+      }
+    </style>
 </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -231,7 +262,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-          <small class="app-version">版本 20261020-32</small>
+           <small class="app-version">版本 20261020-33</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -574,6 +605,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261020-32"></script>
+    <script src="app.js?v=20261020-33"></script>
   </body>
 </html>
