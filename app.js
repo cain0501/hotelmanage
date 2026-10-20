@@ -26,6 +26,7 @@ let activeType = 'all';
 const ORDER_PAGE_SIZE = 50;
 let orderPage = 1;
 let activeView = 'dashboard';
+let lastHandledSessionKey = null;
 let searchTerm = '';
 let selectedOrderId = null;
 let calculatorTarget = null;
@@ -380,6 +381,7 @@ async function setupRealtime() {
     .subscribe();
 }
 async function handleSession(session) {
+  const sessionKey=session?.user?.id||'guest';if(sessionKey===lastHandledSessionKey)return;lastHandledSessionKey=sessionKey;
   currentUser = session?.user || null;
   if (!currentUser) {
     cloudReady=false; qualityActions={}; qualityActionsCloudAvailable=false; orders=[]; otherIncomes=[]; showAuthenticatedUI(false); setAuthStatus('');
