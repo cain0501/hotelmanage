@@ -1019,3 +1019,73 @@ async function saveAssistantMessage(role,content,metadata={}){if(!content)return
 document.addEventListener('click',event=>{if(event.target.closest('#newAssistantConversation')){createAssistantConversation();return;}if(event.target.closest('#toggleAssistantHistory')){assistantHistoryOpen=!assistantHistoryOpen;renderAssistantConversationHistory();return;}if(event.target.closest('#archiveAssistantConversation')){archiveAssistantConversation();return;}if(event.target.closest('#clearAssistantConversation')){clearAssistantConversation();return;}const open=event.target.closest('[data-open-assistant-conversation]');if(open){switchAssistantConversation(open.dataset.openAssistantConversation);return;}const restore=event.target.closest('[data-restore-assistant-conversation]');if(restore){restoreAssistantConversation(restore.dataset.restoreAssistantConversation);return;}});
 mountWorkspacePages();
 initApp();
+
+async function loadAssistantConversationData(conversationId){
+  const [messagesResult,contextResult,pendingResult]=await Promise.all([
+    supabaseClient.from('assistant_messages').select('id,role,content,metadata,created_at').eq('conversation_id',conversationId).order('created_at',{ascending:false}).limit(100),
+    supabaseClient.from('assistant_context').select('*').eq('conversation_id',conversationId).maybeSingle(),
+    supabaseClient.from('assistant_pending_actions').select('id,action_type,affected_record_ids,preview,status,expires_at').eq('conversation_id',conversationId).eq('status','pending').order('created_at',{ascending:false}).limit(1).maybeSingle(),
+  ]);
+  if(messagesResult.error)throw messagesResult.error;
+  if(contextResult.error)throw contextResult.error;
+  if(pendingResult.error&&!['42P01','PGRST205'].includes(pendingResult.error.code)&&pendingResult.error.status!==404)throw pendingResult.error;
+  assistantMessages=(messagesResult.data||[]).reverse();
+  assistantContext={...(contextResult.data||{}),...(contextResult.data?.context||{})};
+  const pending=pendingResult.data;
+  if(pending?.preview){assistantPendingAction={...pending.preview,pending_action_id:pending.id,status:'pending_confirmation'};renderPendingActionPreview(assistantPendingAction);}else{clearPendingAction();}
+  renderAssistantConversation();
+  updateAssistantConversationHeader();
+}
+
+async function requestAssistantAction(mode, actionId){
+  const {data:sessionData}=await supabaseClient.auth.getSession();
+  const response=await fetch(`${SUPABASE_URL}/functions/v1/ai-accounting`,{method:'POST',headers:{Authorization:`Bearer ${sessionData.session?.access_token||''}`,'Content-Type':'application/json'},body:JSON.stringify({mode,action_id:actionId})});
+  const result=await response.json();
+  if(!response.ok)throw new Error(result.error||'服务端任务执行失败');
+  return result;
+}
+
+async function confirmAssistantPendingAction(){
+  const action=assistantPendingAction,actionId=action?.pending_action_id||action?.id;
+  if(!actionId)return;
+  const button=byId('aiPendingActionPanel')?.querySelector('[data-confirm-ai-change]');
+  if(button){button.disabled=true;button.textContent='服务端校验中…';}
+  try{
+    const result=await requestAssistantAction('confirm_action',actionId);
+    await loadCloudData({allowMigration:false,silent:true});
+    clearPendingAction();
+    renderAll();
+    const updated=Number(result.data?.updated_count||0);
+    const status=byId('aiAccountingStatus');
+    status.textContent=result.data?.status==='already_confirmed'?'该任务已完成，未重复修改订单':`已完成：${updated} 笔订单已由服务端修改`;
+    status.className='ai-status success';
+  }catch(error){
+    const status=byId('aiAccountingStatus');
+    status.textContent=error.message||'服务端任务执行失败';
+    status.className='ai-status error';
+    if(button){button.disabled=false;button.textContent='确认修改';}
+  }
+}
+
+async function cancelAssistantPendingAction(){
+  const action=assistantPendingAction,actionId=action?.pending_action_id||action?.id;
+  clearPendingAction();
+  const status=byId('aiAccountingStatus');
+  if(!actionId){status.textContent='已取消批量修改，未改变任何订单';status.className='ai-status';return;}
+  try{
+    await requestAssistantAction('cancel_action',actionId);
+    status.textContent='已取消批量修改，未改变任何订单';
+    status.className='ai-status';
+  }catch(error){
+    status.textContent=`本地已隐藏预览，但服务端取消失败：${error.message||'未知错误'}`;
+    status.className='ai-status error';
+  }
+}
+
+document.addEventListener('click',event=>{
+  const cancel=event.target.closest('[data-cancel-ai-change]');
+  if(!cancel)return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  cancelAssistantPendingAction();
+},true);

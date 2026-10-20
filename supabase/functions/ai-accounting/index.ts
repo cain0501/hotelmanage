@@ -171,6 +171,61 @@ function dateInRange(value: unknown, start: string, end: string) {
   return Boolean(date) && (!start || date >= start) && (!end || date <= end);
 }
 
+async function createAssistantRun(adminClient: any, userId: string, conversationId: string | null, userMessage: string) {
+  if (!adminClient) return null;
+  const { data, error } = await adminClient
+    .from('assistant_runs')
+    .insert({ user_id: userId, conversation_id: conversationId, user_message: userMessage, status: 'running', current_step: 'routing' })
+    .select('id')
+    .single();
+  if (error) {
+    console.warn('assistant run log unavailable', error.message);
+    return null;
+  }
+  return data?.id || null;
+}
+
+async function updateAssistantRun(adminClient: any, runId: string | null, payload: Record<string, unknown>) {
+  if (!adminClient || !runId) return;
+  const { error } = await adminClient.from('assistant_runs').update(payload).eq('id', runId);
+  if (error) console.warn('assistant run update unavailable', error.message);
+}
+
+async function recordAssistantToolCall(adminClient: any, userId: string, conversationId: string | null, runId: string | null, toolName: string, args: Record<string, unknown>, result: Record<string, unknown>) {
+  if (!adminClient) return;
+  const { error } = await adminClient.from('assistant_tool_calls').insert({
+    user_id: userId,
+    run_id: runId,
+    conversation_id: conversationId,
+    tool_name: toolName,
+    arguments: args,
+    result,
+    status: result.error ? 'failed' : 'completed',
+    error_message: result.error ? String(result.error) : '',
+  });
+  if (error) console.warn('assistant tool log unavailable', error.message);
+}
+
+async function persistPendingAction(adminClient: any, userId: string, conversationId: string | null, runId: string | null, action: Record<string, unknown>) {
+  if (!adminClient) throw new Error('服务端暂未启用待确认任务存储，请先完成数据库迁移');
+  const { data, error } = await adminClient
+    .from('assistant_pending_actions')
+    .insert({
+      user_id: userId,
+      conversation_id: conversationId,
+      run_id: runId,
+      action_type: action.action_type || 'batch_replace',
+      affected_record_ids: action.affected_record_ids || [],
+      preview: action,
+      status: 'pending',
+      expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return { ...action, pending_action_id: data.id, status: 'pending_confirmation' };
+}
+
 async function executeChatTool(toolName: string, args: Record<string, unknown>, client: any, today: string) {
   if (toolName === 'search_knowledge') {
     const query = String(args.query || '').toLowerCase();
@@ -359,6 +414,9 @@ Deno.serve(async (request) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
   const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } } });
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+  const adminClient = serviceRoleKey ? createClient(supabaseUrl, serviceRoleKey) : null;
+  let runId: string | null = null;
   const { data: { user }, error: userError } = await userClient.auth.getUser();
   if (userError || !user) return json({ error: '登录已过期，请重新登录' }, 401);
 
@@ -366,6 +424,14 @@ Deno.serve(async (request) => {
     const body = await request.json();
     const mode = String(body?.mode || 'accounting');
     const text = String(body?.text || '').trim();
+    if (mode === 'confirm_action' || mode === 'cancel_action') {
+      const actionId = String(body?.action_id || '').trim();
+      if (!actionId) return json({ error: '缺少待确认任务编号' }, 400);
+      const rpcName = mode === 'confirm_action' ? 'confirm_assistant_batch_replace' : 'reject_assistant_pending_action';
+      const { data, error } = await userClient.rpc(rpcName, { p_action_id: actionId });
+      if (error) return json({ error: error.message }, error.code === '42883' ? 503 : 400);
+      return json({ data, mode, action_id: actionId });
+    }
     if (!text || text.length > 2000) return json({ error: '请输入 1 到 2000 字的内容' }, 400);
     if (mode === 'analysis' && (!body?.context || JSON.stringify(body.context).length > 16000)) {
       return json({ error: '经营分析上下文无效或过长' }, 400);
@@ -383,6 +449,8 @@ Deno.serve(async (request) => {
     const model = settings?.model || Deno.env.get('AI_MODEL') || 'gpt-4o-mini';
     const temperature = Math.min(0.5, Math.max(0, Number(settings?.temperature ?? 0.1)));
     const today = new Date().toISOString().slice(0, 10);
+    const conversationId = typeof body?.conversation_id === 'string' ? body.conversation_id : null;
+    runId = mode === 'chat' ? await createAssistantRun(adminClient, user.id, conversationId, text) : null;
 
     if (mode === 'chat') {
       const chatMessages: any[] = [
@@ -405,6 +473,9 @@ Deno.serve(async (request) => {
             finalData = { answer: String(message.content || '当前没有可回答的内容。') };
           }
           if (analysis) analysis = { ...analysis, question: text, answer: finalData.answer || '' };
+          await updateAssistantRun(adminClient, runId, pendingAction
+            ? { status: 'waiting_confirmation', current_step: 'waiting_confirmation' }
+            : { status: 'completed', current_step: 'completed', completed_at: new Date().toISOString() });
           return json({ data: { ...finalData, analysis, draft, pending_action: pendingAction }, model, mode, tool_calls: toolCalls });
         }
         chatMessages.push({ role: 'assistant', content: message.content || null, tool_calls: message.tool_calls });
@@ -420,7 +491,11 @@ Deno.serve(async (request) => {
           }
           if (toolResult.analysis) analysis = toolResult.analysis as Record<string, unknown>;
           if (toolResult.draft) draft = toolResult.draft as Record<string, unknown>;
-          if (toolResult.pending_action) pendingAction = toolResult.pending_action as Record<string, unknown>;
+          if (toolResult.pending_action) {
+            pendingAction = await persistPendingAction(adminClient, user.id, conversationId, runId, toolResult.pending_action as Record<string, unknown>);
+            toolResult = { ...toolResult, pending_action: pendingAction };
+          }
+          await recordAssistantToolCall(adminClient, user.id, conversationId, runId, toolName, args, toolResult);
           toolCalls.push({ name: toolName, arguments: args, status: toolResult.error ? 'failed' : 'completed' });
           chatMessages.push({ role: 'tool', tool_call_id: call.id, name: toolName, content: JSON.stringify(toolResult) });
         }
@@ -450,6 +525,7 @@ Deno.serve(async (request) => {
     if (typeof modelContent !== 'string') return json({ error: '模型没有返回可识别结果' }, 502);
     return json({ data: parseModelJson(modelContent), model, mode });
   } catch (error) {
+    await updateAssistantRun(adminClient, runId, { status: 'failed', current_step: 'failed', error_message: error instanceof Error ? error.message : 'unknown error', completed_at: new Date().toISOString() });
     return json({ error: error instanceof Error ? error.message : 'AI 处理失败' }, 500);
   }
 });

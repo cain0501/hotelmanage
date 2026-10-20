@@ -328,7 +328,8 @@ create policy "assistant_runs_own" on public.assistant_runs for all to authentic
 drop policy if exists "assistant_tool_calls_own" on public.assistant_tool_calls;
 create policy "assistant_tool_calls_own" on public.assistant_tool_calls for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 drop policy if exists "assistant_pending_actions_own" on public.assistant_pending_actions;
-create policy "assistant_pending_actions_own" on public.assistant_pending_actions for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "assistant_pending_actions_read_own" on public.assistant_pending_actions;
+create policy "assistant_pending_actions_read_own" on public.assistant_pending_actions for select to authenticated using (user_id = auth.uid());
 drop policy if exists "assistant_knowledge_own" on public.assistant_knowledge;
 create policy "assistant_knowledge_own" on public.assistant_knowledge for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
