@@ -218,6 +218,8 @@ create table if not exists public.assistant_conversations (
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   title text not null default 'AI 工作台',
   summary text not null default '',
+  status text not null default 'active' check (status in ('active', 'archived')),
+  archived_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

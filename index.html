@@ -188,6 +188,8 @@
 </style>
 <style>
 .sidebar-bottom-nav{padding-top:14px;border-top:1px solid rgba(255,255,255,.13)}.sidebar-bottom-nav .nav-item{width:100%}.knowledge-view,.settings-view{min-width:0}.knowledge-page-mount,.settings-page-mount{max-width:980px}.knowledge-page-panel,.settings-page-panel{grid-column:auto!important;min-width:0}.knowledge-view .knowledge-panel,.settings-view .ai-settings-panel{margin:0}.knowledge-page-mark{font:500 42px "DM Mono",monospace;color:#bd843b;opacity:.78}.ai-layout .ai-entry-panel{grid-column:1 / -1}
+<style>
+.assistant-toolbar{display:flex;justify-content:space-between;align-items:center;gap:14px;margin:0 20px 10px;padding:10px 12px;background:#f7f1e7;border:1px solid #e7ddcc;border-radius:6px}.assistant-toolbar>div:first-child{min-width:0}.assistant-toolbar span{display:block;color:#143b36;font-size:12px;font-weight:600}.assistant-toolbar small{display:block;color:#8d877d;font-size:10px;margin-top:3px}.assistant-toolbar-actions{display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap}.assistant-toolbar-actions .button{padding:6px 9px;font-size:11px;white-space:nowrap}.assistant-history{display:grid;gap:6px;margin:0 20px 10px;padding:10px;background:#fffdf8;border:1px solid #e7ddcc;border-radius:6px;max-height:250px;overflow:auto}.assistant-history-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 9px;background:#f7f1e7;border-radius:4px}.assistant-history-main{min-width:0}.assistant-history-main strong,.assistant-history-main small{display:block;overflow-wrap:anywhere}.assistant-history-main strong{color:#143b36;font-size:11px}.assistant-history-main small{color:#8d877d;font-size:10px;margin-top:3px}.assistant-history-item.archived{opacity:.68}.assistant-history-actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}.assistant-history-actions .button{padding:5px 8px;font-size:10px}.assistant-history-empty{color:#8d877d;font-size:11px;padding:5px}
 </style>
 </head>
   <body>
@@ -229,7 +231,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-          <small class="app-version">版本 20261020-31</small>
+          <small class="app-version">版本 20261020-32</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -354,6 +356,8 @@
           <div class="ai-layout">
             <section class="panel ai-entry-panel">
                <div class="panel-head"><div><p class="eyebrow">ONE INPUT · ALL WORK</p><h2>告诉我你要做什么</h2></div><span class="panel-caption">一个入口 · 最多 2000 字</span></div>
+               <div class="assistant-toolbar"><div><span id="assistantConversationTitle">当前对话</span><small id="assistantConversationMeta">聊天记录会保存在当前会话中</small></div><div class="assistant-toolbar-actions"><button class="button quiet" id="newAssistantConversation" type="button">新建对话</button><button class="button quiet" id="toggleAssistantHistory" type="button">历史会话</button><button class="button quiet" id="archiveAssistantConversation" type="button">归档当前</button><button class="button quiet danger" id="clearAssistantConversation" type="button">清空当前</button></div></div>
+               <div id="assistantConversationHistory" class="assistant-history" hidden></div>
                <div id="assistantConversation" class="assistant-conversation" aria-live="polite"><div class="assistant-message empty">当前会话会记住日期口径、筛选条件和已确认的业务规则。</div></div>
                <div class="ai-entry-body">
                  <textarea id="aiAccountingText" class="ai-textarea" rows="7" placeholder="例如：今天给王先生订广州瑰丽豪华大床房1间住2晚，售价3600，成本3200，已付款；也可以问：本月酒店业务赚了多少钱？"></textarea>
@@ -570,6 +574,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261020-31"></script>
+    <script src="app.js?v=20261020-32"></script>
   </body>
 </html>
