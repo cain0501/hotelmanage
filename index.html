@@ -183,7 +183,13 @@
       .assistant-message.assistant.assistant-analysis .assistant-analysis-scope{color:#c8e1d3!important}
       @media(max-width:650px){.ai-entry-panel>.assistant-conversation{min-height:300px;max-height:58vh;margin:0 12px 10px;padding:12px 10px}.ai-entry-panel>.ai-entry-body{padding:12px}.assistant-message,.assistant-analysis{max-width:96%;width:auto}.assistant-analysis-metrics{grid-template-columns:1fr 1fr}.ai-entry-actions{align-items:flex-start}}
     </style>
-  </head>
+<style>
+.ai-pending-action-panel .pending-action-list{display:grid;gap:7px;margin:14px 0}.pending-action-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 10px;background:#fffdf8;border-radius:4px;color:#143b36;font-size:11px}.pending-action-row div{min-width:0}.pending-action-row b,.pending-action-row span{display:block;overflow-wrap:anywhere}.pending-action-row span{color:#77766f;margin-top:3px}.pending-action-row small{color:#8d877d;white-space:nowrap}.pending-action-buttons{display:flex;gap:8px;flex-wrap:wrap}.pending-old-value{color:#a84d3e!important}.pending-new-value{color:#27795d!important}
+</style>
+<style>
+.sidebar-bottom-nav{padding-top:14px;border-top:1px solid rgba(255,255,255,.13)}.sidebar-bottom-nav .nav-item{width:100%}.knowledge-view,.settings-view{min-width:0}.knowledge-page-mount,.settings-page-mount{max-width:980px}.knowledge-page-panel,.settings-page-panel{grid-column:auto!important;min-width:0}.knowledge-view .knowledge-panel,.settings-view .ai-settings-panel{margin:0}.knowledge-page-mark{font:500 42px "DM Mono",monospace;color:#bd843b;opacity:.78}.ai-layout .ai-entry-panel{grid-column:1 / -1}
+</style>
+</head>
   <body>
     <section class="auth-shell" id="authShell">
       <div class="auth-card">
@@ -213,7 +219,11 @@
           <button class="nav-item" data-view="otherIncome"><span>＋</span>其它收入</button>
           <button class="nav-item" data-view="quality"><span>△</span>数据待办 <b id="issueCount">0</b></button>
           <button class="nav-item" data-view="ai"><span>AI</span>AI 工作台</button>
+          <button class="nav-item" data-view="knowledge"><span>✦</span>专业知识库</button>
         </nav>
+        <div class="sidebar-bottom-nav">
+          <button class="nav-item" data-view="settings"><span>⚙</span>设置</button>
+        </div>
         <div class="sidebar-note">
           <span class="pulse"></span>
           <p>本地原型</p>
@@ -356,6 +366,7 @@
                 <pre id="aiDraftJson" class="ai-draft-json"></pre>
                 <div class="ai-entry-actions"><span class="ai-status">AI只负责识别，金额和利润仍由系统计算</span><button class="button primary" id="aiFillButton" type="button">填入对应表单</button></div>
               </div>
+              <div id="aiPendingActionPanel" class="ai-draft-panel ai-pending-action-panel" hidden></div>
               <div id="analysisResult" class="analysis-result" hidden></div>
               <div class="ai-clean-panel">
                 <div class="ai-draft-head"><div><p class="eyebrow">DATA CLEANUP</p><h3>扫描台账问题</h3></div><button class="button quiet" id="scanDataQuality" type="button">开始扫描</button></div>
@@ -400,7 +411,17 @@
            </div>
         </section>
 
-        <section class="view" id="qualityView">
+         <section class="view knowledge-view" id="knowledgeView">
+           <div class="section-heading"><div><p class="eyebrow">PROFESSIONAL KNOWLEDGE</p><h2>专业知识库</h2><p>把酒店产品、政策、供应商规则和个人经验沉淀下来，发布后 AI 才会在对话中引用。</p></div><span class="knowledge-page-mark">✦</span></div>
+           <div id="knowledgePageMount" class="knowledge-page-mount"></div>
+         </section>
+
+         <section class="view settings-view" id="settingsView">
+           <div class="section-heading"><div><p class="eyebrow">WORKSPACE SETTINGS</p><h2>设置</h2><p>配置 AI 模型接口和工作台行为。API Key 只保存在 Supabase Edge Function，不会写入浏览器。</p></div><span class="knowledge-page-mark">⚙</span></div>
+           <div id="settingsPageMount" class="settings-page-mount"></div>
+         </section>
+
+         <section class="view" id="qualityView">
           <div class="quality-intro"><p class="eyebrow">DATA HEALTH · RECONCILIATION</p><h2>异常中心</h2><p>异常不会静默进入正常报表。每条记录都有证据和建议动作，处理后仍可筛选查看。</p></div>
           <section class="quality-filter-panel">
             <div class="quality-filter-head"><h2>筛选待办问题</h2><span>只筛选，不修改订单</span></div>

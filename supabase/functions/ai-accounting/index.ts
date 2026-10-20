@@ -43,7 +43,42 @@ const chatPrompt = (today: string) => `你是酒店运营与旅行知识工作�
 6. 没有实时天气、库存、价格、航班或签证工具时，必须明确说明当前没有对应实时查询能力。
 7. 最终只输出 JSON：{"answer":"中文回答","needs_clarification":false,"unsupported":false}。统计回答必须引用工具返回的范围、日期口径和结果，不得自行重算。`;
 
+const chatToolRoutingRule = `补充规则：用户要求修改、统一、替换、批量修改已有订单字段时，必须调用 draft_data_change，先查询并返回待确认预览；禁止调用 draft_accounting，也禁止直接写入数据库。用户确认后才允许前端执行修改。酒店/航司名称归入 supplier，房型/航班归入 product，城市/航线归入 location。`;
+
 const chatTools = [
+  {
+    type: 'function',
+    function: {
+      name: 'draft_data_change',
+      description: '识别用户要批量修改已有订单数据的请求，只生成待确认的修改预览，绝不直接写入数据库。适用于把某个字段的旧值统一替换成新值。',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['action_type', 'target', 'from_value', 'to_value', 'filters', 'search_text'],
+        properties: {
+          action_type: { type: 'string', enum: ['batch_replace'] },
+          target: { type: 'string', enum: ['supplier', 'product', 'location', 'booker', 'customer', 'payment_platform', 'confirmation', 'status'] },
+          from_value: { type: 'string' },
+          to_value: { type: 'string' },
+          filters: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              type: { type: 'string', enum: ['all', 'hotel', 'flight'] },
+              location: { type: 'string' },
+              supplier: { type: 'string' },
+              booker: { type: 'string' },
+              order_date_start: { type: 'string' },
+              order_date_end: { type: 'string' },
+              service_date_start: { type: 'string' },
+              service_date_end: { type: 'string' },
+            },
+          },
+          search_text: { type: 'string', description: '确认号、订单编号或客户线索；没有则为空字符串' },
+        },
+      },
+    },
+  },
   {
     type: 'function',
     function: {
@@ -156,6 +191,66 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
   }
 
   if (toolName === 'draft_accounting') return { draft: args };
+  if (toolName === 'draft_data_change') {
+    const target = String(args.target || '');
+    const fromValue = String(args.from_value || '').trim();
+    const toValue = String(args.to_value || '').trim();
+    const filters = (args.filters && typeof args.filters === 'object' ? args.filters : {}) as Record<string, unknown>;
+    const allowedTargets = new Set(['supplier', 'product', 'location', 'booker', 'customer', 'payment_platform', 'confirmation', 'status']);
+    if (!allowedTargets.has(target)) throw new Error('批量修改字段不受支持');
+    if (!fromValue || !toValue) throw new Error('批量修改必须同时提供原值和新值');
+
+    const { data, error } = await client
+      .from('orders')
+      .select('id,order_code,type,customer,booker,location,supplier,product,confirmation,payment_platform,status,order_date,service_date')
+      .limit(10000);
+    if (error) throw error;
+    const normalized = (value: unknown) => String(value || '').trim().toLocaleLowerCase();
+    const inDateRange = (value: unknown, startKey: string, endKey: string) => {
+      const date = String(value || '');
+      return (!filters[startKey] || date >= String(filters[startKey])) && (!filters[endKey] || date <= String(filters[endKey]));
+    };
+    const matches = (data || []).filter((order: Record<string, unknown>) => {
+      if (filters.type && filters.type !== 'all' && order.type !== filters.type) return false;
+      if (filters.location && normalized(order.location) !== normalized(filters.location)) return false;
+      if (filters.supplier && normalized(order.supplier) !== normalized(filters.supplier)) return false;
+      if (filters.booker && normalized(order.booker) !== normalized(filters.booker)) return false;
+      if (!inDateRange(order.order_date, 'order_date_start', 'order_date_end')) return false;
+      if (!inDateRange(order.service_date, 'service_date_start', 'service_date_end')) return false;
+      const searchText = String(args.search_text || '').trim();
+      if (searchText) {
+        const haystack = `${order.order_code || ''} ${order.id || ''} ${order.confirmation || ''} ${order.customer || ''}`.toLocaleLowerCase();
+        if (!haystack.includes(searchText.toLocaleLowerCase())) return false;
+      }
+      return normalized(order[target]) === normalized(fromValue);
+    });
+    const targetLabels: Record<string, string> = {
+      supplier: '酒店 / 航司', product: '房型 / 航班', location: '城市 / 航线', booker: '预订人',
+      customer: '客户', payment_platform: '付款平台', confirmation: '确认号 / 票号', status: '订单状态',
+    };
+    return {
+      pending_action: {
+        action_type: 'batch_replace',
+        target,
+        target_label: targetLabels[target] || target,
+        from_value: fromValue,
+        to_value: toValue,
+        filters,
+        search_text: String(args.search_text || '').trim(),
+        matched_count: matches.length,
+        affected_record_ids: matches.map((order: Record<string, unknown>) => order.id),
+        sample_records: matches.slice(0, 8).map((order: Record<string, unknown>) => ({
+          id: order.id,
+          order_code: order.order_code || order.id,
+          customer: order.customer || '',
+          booker: order.booker || '',
+          service_date: order.service_date || '',
+          current_value: order[target] || '',
+        })),
+        status: 'pending_confirmation',
+      },
+    };
+  }
   if (toolName !== 'summarize_business') throw new Error(`未知工具：${toolName}`);
 
   const dateField = args.date_field === 'service_date' ? 'service_date' : 'order_date';
@@ -291,11 +386,12 @@ Deno.serve(async (request) => {
 
     if (mode === 'chat') {
       const chatMessages: any[] = [
-        { role: 'system', content: chatPrompt(today) },
+        { role: 'system', content: `${chatPrompt(today)}\n${chatToolRoutingRule}` },
         { role: 'user', content: JSON.stringify({ question: text, context: body?.context_state || {}, history: Array.isArray(body?.history) ? body.history.slice(-8) : [] }) },
       ];
       let analysis: Record<string, unknown> | null = null;
       let draft: Record<string, unknown> | null = null;
+      let pendingAction: Record<string, unknown> | null = null;
       const toolCalls: Array<Record<string, unknown>> = [];
       for (let step = 0; step < 6; step += 1) {
         const modelResult = await callModel(baseUrl, apiKey, { model, temperature, tools: chatTools, tool_choice: 'auto', messages: chatMessages });
@@ -309,7 +405,7 @@ Deno.serve(async (request) => {
             finalData = { answer: String(message.content || '当前没有可回答的内容。') };
           }
           if (analysis) analysis = { ...analysis, question: text, answer: finalData.answer || '' };
-          return json({ data: { ...finalData, analysis, draft }, model, mode, tool_calls: toolCalls });
+          return json({ data: { ...finalData, analysis, draft, pending_action: pendingAction }, model, mode, tool_calls: toolCalls });
         }
         chatMessages.push({ role: 'assistant', content: message.content || null, tool_calls: message.tool_calls });
         for (const call of message.tool_calls) {
@@ -324,6 +420,7 @@ Deno.serve(async (request) => {
           }
           if (toolResult.analysis) analysis = toolResult.analysis as Record<string, unknown>;
           if (toolResult.draft) draft = toolResult.draft as Record<string, unknown>;
+          if (toolResult.pending_action) pendingAction = toolResult.pending_action as Record<string, unknown>;
           toolCalls.push({ name: toolName, arguments: args, status: toolResult.error ? 'failed' : 'completed' });
           chatMessages.push({ role: 'tool', tool_call_id: call.id, name: toolName, content: JSON.stringify(toolResult) });
         }
