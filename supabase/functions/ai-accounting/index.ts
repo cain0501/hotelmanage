@@ -31,7 +31,7 @@ const systemPrompt = (today: string) => `你是酒店和机票运营台账助手
 
 const analysisPrompt = `你是酒店运营分析说明助手。前端已经用确定性规则完成统计，下面只提供统计结果和口径。只根据 context 中的事实组织简洁中文回答，不要重新计算、补造数据、生成 SQL 或修改订单。必须说明统计范围、日期口径和关键金额；数据不足时直接说明“当前数据不足以判断”。只输出 JSON：{"answer":"中文回答","key_points":["要点"],"limitations":["必要时说明限制"]}。`;
 
-const assistantPrompt = `你是酒店运营与旅行知识助手。你可以回答一般问题、专业酒店知识、旅行建议和写作请求，但不能假装查询了实时数据。只使用已发布知识和对话上下文作为内部参考。没有实时天气、库存、价格、航班或签证工具时，明确说明当前没有实时查询能力。用户提交专业规则时，把它整理为可审核建议，不要声称已经永久记住。不要生成 SQL，不要修改订单，不要编造酒店价格、库存、预订结果或供应商政策。只输出 JSON：{"answer":"中文回答","knowledge_sources":[{"title":"来源标题","updated_at":"更新时间"}],"needs_clarification":false,"unsupported":false}。`;
+const assistantPrompt = `你是酒店运营与旅行知识助手。你可以回答一般问题、专业酒店知识、旅行建议和写作请求，但不能假装查询了实时数据。只使用已发布知识、已确认记忆和对话上下文作为内部参考。没有实时天气、库存、价格、航班或签证工具时，明确说明当前没有实时查询能力。用户提交专业规则时，把它整理为可审核建议，不要声称已经永久记住。不要生成 SQL，不要修改订单，不要编造酒店价格、库存、预订结果或供应商政策。只输出 JSON：{"answer":"中文回答","knowledge_sources":[{"title":"来源标题","updated_at":"更新时间"}],"needs_clarification":false,"unsupported":false}。`;
 
 const chatPrompt = (today: string) => `你是酒店运营与旅行知识工作台的统一助手。今天是 ${today}。你可以处理经营查询、自然语言记账、已审核专业知识和一般问题。
 必须遵守：
@@ -42,7 +42,8 @@ const chatPrompt = (today: string) => `你是酒店运营与旅行知识工作�
 5. 新增、收款、返佣和记账操作只生成 draft_accounting；修改已有订单字段使用 draft_data_change。两类操作都不直接写订单或收入表。修改已有订单时，如果用户提供了唯一订单编号、确认号或客户线索，先从真实订单读取当前值，不要要求用户手工提供原值；只有匹配多笔或无法定位时才追问。
 6. 用户查询订单详情、未付款、待返佣、未开票、重复订单或其它收入时，必须调用对应的只读查询工具；不要用对话历史或综合统计代替明细查询。
 7. 没有实时天气、库存、价格、航班或签证工具时，必须明确说明当前没有对应实时查询能力。
-8. 最终只输出 JSON：{"answer":"中文回答","needs_clarification":false,"unsupported":false}。统计和专项查询回答必须引用工具返回的范围、日期口径和结果，不得自行重算或编造明细。`;
+8. 最终只输出 JSON：{"answer":"中文回答","needs_clarification":false,"unsupported":false}。统计和专项查询回答必须引用工具返回的范围、日期口径和结果，不得自行重算或编造明细。
+9. 只有用户明确说“记住、以后默认、以后都按、这是我们的规则”等内容时，才可以调用 draft_memory；它只生成待确认草稿，必须等用户点击保存后才会进入长期记忆。普通聊天、订单事实和一次性筛选条件不要写入长期记忆。`;
 
 const chatToolRoutingRule = `补充规则：用户要求修改、统一、替换、批量修改已有订单字段时，必须调用 draft_data_change，先查询并返回待确认预览；如果提供了唯一订单编号、确认号或客户线索，可以省略 from_value，由工具自动读取当前值；禁止调用 draft_accounting，也禁止直接写入数据库。用户确认后才允许服务端执行修改。酒店/航司名称归入 supplier，房型/航班归入 product，城市/航线归入 location。`;
 
@@ -218,6 +219,23 @@ const chatTools = [
   {
     type: 'function',
     function: {
+      name: 'draft_memory',
+      description: '把用户明确要求长期记住的业务规则或个人偏好整理成待确认记忆草稿，不直接保存。',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['kind', 'title', 'content'],
+        properties: {
+          kind: { type: 'string', enum: ['business_rule', 'preference'] },
+          title: { type: 'string', description: '简短、可管理的记忆标题' },
+          content: { type: 'string', description: '以后回答和统计时应遵守的明确规则或偏好' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'draft_accounting',
       description: '把用户要求整理为可审核的记账草稿，不写入订单或收入表。',
       parameters: {
@@ -370,6 +388,46 @@ function queryLimit(args: Record<string, unknown>, fallback = 20) {
   return Math.min(100, Math.max(1, Math.floor(numberValue(args.limit) || fallback)));
 }
 
+async function loadAssistantMemories(client: any) {
+  const { data, error } = await client
+    .from('assistant_memories')
+    .select('id,kind,title,content,source,updated_at')
+    .eq('status', 'active')
+    .order('updated_at', { ascending: false })
+    .limit(100);
+  if (error) {
+    if (['42P01', 'PGRST205'].includes(error.code) || error.status === 404) return [];
+    throw error;
+  }
+  return data || [];
+}
+
+async function refreshConversationSummary(adminClient: any, userId: string, conversationId: string | null, baseUrl: string, apiKey: string, model: string, temperature: number, previousSummary: string, messageCount: number, history: unknown[], question: string, answer: string) {
+  if (!adminClient || !conversationId || messageCount < 8 || messageCount % 8 !== 0) return '';
+  try {
+    const result = await callModel(baseUrl, apiKey, {
+      model,
+      temperature: Math.min(0.2, temperature),
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: '你是对话摘要器。把酒店运营工作台的长期对话压缩成不超过 500 字的中文摘要，只保留已确认的业务口径、用户偏好、正在跟进的事项和重要上下文；不要把猜测写成事实，不要保留无关闲聊。只输出 JSON：{"summary":"..."}。' },
+        { role: 'user', content: JSON.stringify({ previous_summary: previousSummary || '', recent_history: Array.isArray(history) ? history.slice(-8) : [], current_question: question, current_answer: answer }) },
+      ],
+    });
+    const content = result?.choices?.[0]?.message?.content;
+    if (typeof content !== 'string') return '';
+    const parsed = parseModelJson(content);
+    const summary = String(parsed.summary || '').trim().slice(0, 2000);
+    if (!summary) return '';
+    const { error } = await adminClient.from('assistant_conversations').update({ summary }).eq('id', conversationId).eq('user_id', userId);
+    if (error) throw error;
+    return summary;
+  } catch (error) {
+    console.warn('conversation summary unavailable', error instanceof Error ? error.message : error);
+    return '';
+  }
+}
+
 async function createAssistantRun(adminClient: any, userId: string, conversationId: string | null, userMessage: string) {
   if (!adminClient) return null;
   const { data, error } = await adminClient
@@ -442,6 +500,14 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
       return !tokens.length || tokens.some((token) => haystack.includes(token));
     }).slice(0, 8);
     return { knowledge };
+  }
+
+  if (toolName === 'draft_memory') {
+    const kind = String(args.kind || 'business_rule');
+    const title = String(args.title || '').trim().slice(0, 120);
+    const content = String(args.content || '').trim().slice(0, 2000);
+    if (!['business_rule', 'preference'].includes(kind) || !title || !content) throw new Error('记忆草稿缺少类型、标题或内容');
+    return { memory_draft: { kind, title, content, source: '用户确认', status: 'pending_confirmation' } };
   }
 
   if (toolName === 'get_order_detail') {
@@ -717,6 +783,16 @@ Deno.serve(async (request) => {
       if (error) return json({ error: error.message }, error.code === '42883' ? 503 : 400);
       return json({ data, mode, action_id: actionId });
     }
+    if (mode === 'save_memory') {
+      const memory = body?.memory && typeof body.memory === 'object' ? body.memory as Record<string, unknown> : {};
+      const kind = String(memory.kind || 'business_rule');
+      const title = String(memory.title || '').trim().slice(0, 120);
+      const content = String(memory.content || '').trim().slice(0, 2000);
+      if (!['business_rule', 'preference'].includes(kind) || !title || !content) return json({ error: '记忆内容不完整' }, 400);
+      const { data, error } = await userClient.from('assistant_memories').insert({ user_id: user.id, conversation_id: typeof body?.conversation_id === 'string' ? body.conversation_id : null, kind, title, content, source: '用户确认', status: 'active' }).select('id,kind,title,content,source,status,created_at,updated_at').single();
+      if (error) return json({ error: error.message }, ['42P01', 'PGRST205'].includes(error.code) ? 503 : 400);
+      return json({ data, mode });
+    }
     if (!text || text.length > 2000) return json({ error: '请输入 1 到 2000 字的内容' }, 400);
     if (mode === 'analysis' && (!body?.context || JSON.stringify(body.context).length > 16000)) {
       return json({ error: '经营分析上下文无效或过长' }, 400);
@@ -738,13 +814,15 @@ Deno.serve(async (request) => {
     runId = mode === 'chat' ? await createAssistantRun(adminClient, user.id, conversationId, text) : null;
 
     if (mode === 'chat') {
+      const memories = await loadAssistantMemories(userClient);
       const chatMessages: any[] = [
         { role: 'system', content: `${chatPrompt(today)}\n${chatToolRoutingRule}` },
-        { role: 'user', content: JSON.stringify({ question: text, context: body?.context_state || {}, history: Array.isArray(body?.history) ? body.history.slice(-8) : [] }) },
+        { role: 'user', content: JSON.stringify({ question: text, context: body?.context_state || {}, conversation_summary: String(body?.conversation_summary || ''), confirmed_memories: memories, history: Array.isArray(body?.history) ? body.history.slice(-8) : [] }) },
       ];
       let analysis: Record<string, unknown> | null = null;
       let draft: Record<string, unknown> | null = null;
       let pendingAction: Record<string, unknown> | null = null;
+      let memoryDraft: Record<string, unknown> | null = null;
       const queryResults: Record<string, unknown>[] = [];
       const toolCalls: Array<Record<string, unknown>> = [];
       for (let step = 0; step < 6; step += 1) {
@@ -759,10 +837,11 @@ Deno.serve(async (request) => {
             finalData = { answer: String(message.content || '当前没有可回答的内容。') };
           }
           if (analysis) analysis = { ...analysis, question: text, answer: finalData.answer || '' };
+          const conversationSummary = await refreshConversationSummary(adminClient, user.id, conversationId, baseUrl, apiKey, model, temperature, String(body?.conversation_summary || ''), Number(body?.message_count || 0), Array.isArray(body?.history) ? body.history : [], text, String(finalData.answer || ''));
           await updateAssistantRun(adminClient, runId, pendingAction
             ? { status: 'waiting_confirmation', current_step: 'waiting_confirmation' }
             : { status: 'completed', current_step: 'completed', completed_at: new Date().toISOString() });
-          return json({ data: { ...finalData, analysis, draft, pending_action: pendingAction, query_results: queryResults }, model, mode, tool_calls: toolCalls });
+          return json({ data: { ...finalData, analysis, draft, memory_draft: memoryDraft, pending_action: pendingAction, query_results: queryResults, conversation_summary: conversationSummary }, model, mode, tool_calls: toolCalls });
         }
         chatMessages.push({ role: 'assistant', content: message.content || null, tool_calls: message.tool_calls });
         for (const call of message.tool_calls) {
@@ -781,6 +860,7 @@ Deno.serve(async (request) => {
             pendingAction = await persistPendingAction(adminClient, user.id, conversationId, runId, toolResult.pending_action as Record<string, unknown>);
             toolResult = { ...toolResult, pending_action: pendingAction };
           }
+          if (toolResult.memory_draft) memoryDraft = toolResult.memory_draft as Record<string, unknown>;
           if (toolResult.query_result) queryResults.push(toolResult.query_result as Record<string, unknown>);
           await recordAssistantToolCall(adminClient, user.id, conversationId, runId, toolName, args, toolResult);
           toolCalls.push({ name: toolName, arguments: args, status: toolResult.error ? 'failed' : 'completed' });
@@ -791,6 +871,7 @@ Deno.serve(async (request) => {
     }
 
     let knowledge: Record<string, unknown>[] = [];
+    let memories: Record<string, unknown>[] = [];
     if (mode === 'assistant') {
       const { data: knowledgeRows } = await userClient.from('assistant_knowledge').select('title,category,content,source,updated_at,expires_at').eq('status', 'published').order('updated_at', { ascending: false }).limit(50);
       const tokens = text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((token: string) => token.length >= 2);
@@ -799,8 +880,9 @@ Deno.serve(async (request) => {
         const haystack = `${row.title || ''} ${row.category || ''} ${row.content || ''} ${row.source || ''}`.toLowerCase();
         return !tokens.length || tokens.some((token: string) => haystack.includes(token));
       }).slice(0, 8);
+      memories = await loadAssistantMemories(userClient);
     }
-    const memory = { context: body?.context_state || {}, history: Array.isArray(body?.history) ? body.history.slice(-8) : [], knowledge };
+    const memory = { context: body?.context_state || {}, conversation_summary: String(body?.conversation_summary || ''), history: Array.isArray(body?.history) ? body.history.slice(-8) : [], knowledge, confirmed_memories: memories };
     const prompt = mode === 'analysis' ? analysisPrompt : mode === 'assistant' ? assistantPrompt : systemPrompt(today);
     const content = mode === 'analysis'
       ? JSON.stringify({ question: text, context: body.context, memory })

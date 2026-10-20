@@ -36,5 +36,6 @@
 4. 网站登录后打开“AI 工作台”，填写接口地址、模型名称并启用。
 5. 输入自然语言，AI 会区分经营查询、记账请求和一般/专业知识问题；涉及保存时仍先生成草稿。
 6. 在“专业知识库”中先保存酒店规则草稿，点击“发布使用”后 AI 才会检索该知识。
+7. 在 Supabase SQL Editor 执行 `supabase/assistant-memory-migration.sql`，启用 AI 记忆表；“AI 记忆”页面中的内容只有手动保存或对话确认后才会生效。
 
 默认按 OpenAI 兼容接口调用，DeepSeek 可填写 `https://api.deepseek.com`。模型配置只保存接口地址、模型名和开关，密钥由 Edge Function Secret 管理。

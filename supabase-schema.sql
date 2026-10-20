@@ -309,6 +309,20 @@ create table if not exists public.assistant_knowledge (
   updated_at timestamptz not null default now()
 );
 
+-- AI 已确认的业务规则和用户偏好；不会自动把普通聊天写成长期记忆。
+create table if not exists public.assistant_memories (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  conversation_id uuid references public.assistant_conversations(id) on delete set null,
+  kind text not null default 'business_rule' check (kind in ('business_rule', 'preference')),
+  title text not null default '',
+  content text not null default '',
+  source text not null default '用户确认',
+  status text not null default 'active' check (status in ('active', 'archived')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 alter table public.assistant_conversations enable row level security;
 alter table public.assistant_messages enable row level security;
 alter table public.assistant_context enable row level security;
@@ -316,6 +330,7 @@ alter table public.assistant_runs enable row level security;
 alter table public.assistant_tool_calls enable row level security;
 alter table public.assistant_pending_actions enable row level security;
 alter table public.assistant_knowledge enable row level security;
+alter table public.assistant_memories enable row level security;
 
 drop policy if exists "assistant_conversations_own" on public.assistant_conversations;
 create policy "assistant_conversations_own" on public.assistant_conversations for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
@@ -332,6 +347,8 @@ drop policy if exists "assistant_pending_actions_read_own" on public.assistant_p
 create policy "assistant_pending_actions_read_own" on public.assistant_pending_actions for select to authenticated using (user_id = auth.uid());
 drop policy if exists "assistant_knowledge_own" on public.assistant_knowledge;
 create policy "assistant_knowledge_own" on public.assistant_knowledge for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "assistant_memories_own" on public.assistant_memories;
+create policy "assistant_memories_own" on public.assistant_memories for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 create index if not exists assistant_conversations_user_updated_idx on public.assistant_conversations (user_id, updated_at desc);
 create index if not exists assistant_messages_conversation_created_idx on public.assistant_messages (conversation_id, created_at);
@@ -339,6 +356,7 @@ create index if not exists assistant_runs_user_created_idx on public.assistant_r
 create index if not exists assistant_tool_calls_run_created_idx on public.assistant_tool_calls (run_id, created_at);
 create index if not exists assistant_pending_actions_user_status_idx on public.assistant_pending_actions (user_id, status, created_at desc);
 create index if not exists assistant_knowledge_user_status_idx on public.assistant_knowledge (user_id, status, updated_at desc);
+create index if not exists assistant_memories_user_status_idx on public.assistant_memories (user_id, status, updated_at desc);
 
 drop trigger if exists assistant_conversations_set_updated_at on public.assistant_conversations;
 create trigger assistant_conversations_set_updated_at before update on public.assistant_conversations for each row execute function public.set_updated_at();
@@ -346,3 +364,5 @@ drop trigger if exists assistant_context_set_updated_at on public.assistant_cont
 create trigger assistant_context_set_updated_at before update on public.assistant_context for each row execute function public.set_updated_at();
 drop trigger if exists assistant_knowledge_set_updated_at on public.assistant_knowledge;
 create trigger assistant_knowledge_set_updated_at before update on public.assistant_knowledge for each row execute function public.set_updated_at();
+drop trigger if exists assistant_memories_set_updated_at on public.assistant_memories;
+create trigger assistant_memories_set_updated_at before update on public.assistant_memories for each row execute function public.set_updated_at();
