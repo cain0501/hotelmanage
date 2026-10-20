@@ -39,27 +39,27 @@ const chatPrompt = (today: string) => `你是酒店运营与旅行知识工作�
 2. “本月”必须转换为当前自然月的明确 start 和 end；不要因为结果为空而改查全部数据。
 3. 如果用户没有说明按下单日期还是入住/出发日期，优先沿用 context_state.date_field；没有已记住的口径且两者会影响结果时，先追问，不要调用统计工具。
 4. 专业酒店规则和知识问题调用 search_knowledge；没有匹配内容时说明当前知识库没有相关资料。
-5. 新增、修改、收款、返佣和批量操作只生成 draft_accounting，不直接写订单或收入表；需要关联已有订单时使用 search_text 提供确认号、订单编号或客户线索。
+  5. 新增、收款、返佣和记账操作只生成 draft_accounting；修改已有订单字段使用 draft_data_change。两类操作都不直接写订单或收入表。修改已有订单时，如果用户提供了唯一订单编号、确认号或客户线索，先从真实订单读取当前值，不要要求用户手工提供原值；只有匹配多笔或无法定位时才追问。
 6. 没有实时天气、库存、价格、航班或签证工具时，必须明确说明当前没有对应实时查询能力。
 7. 最终只输出 JSON：{"answer":"中文回答","needs_clarification":false,"unsupported":false}。统计回答必须引用工具返回的范围、日期口径和结果，不得自行重算。`;
 
-const chatToolRoutingRule = `补充规则：用户要求修改、统一、替换、批量修改已有订单字段时，必须调用 draft_data_change，先查询并返回待确认预览；禁止调用 draft_accounting，也禁止直接写入数据库。用户确认后才允许前端执行修改。酒店/航司名称归入 supplier，房型/航班归入 product，城市/航线归入 location。`;
+const chatToolRoutingRule = `补充规则：用户要求修改、统一、替换、批量修改已有订单字段时，必须调用 draft_data_change，先查询并返回待确认预览；如果提供了唯一订单编号、确认号或客户线索，可以省略 from_value，由工具自动读取当前值；禁止调用 draft_accounting，也禁止直接写入数据库。用户确认后才允许服务端执行修改。酒店/航司名称归入 supplier，房型/航班归入 product，城市/航线归入 location。`;
 
 const chatTools = [
   {
     type: 'function',
     function: {
       name: 'draft_data_change',
-      description: '识别用户要批量修改已有订单数据的请求，只生成待确认的修改预览，绝不直接写入数据库。适用于把某个字段的旧值统一替换成新值。',
+      description: '识别用户要修改已有订单数据的请求，只生成待确认的修改预览，绝不直接写入数据库。用户提供唯一订单编号、确认号或客户线索时，可不提供旧值，工具会先读取真实订单当前值；多笔批量替换时再提供旧值筛选。',
       parameters: {
         type: 'object',
         additionalProperties: false,
-        required: ['action_type', 'target', 'from_value', 'to_value', 'filters', 'search_text'],
+        required: ['action_type', 'target', 'to_value', 'filters', 'search_text'],
         properties: {
           action_type: { type: 'string', enum: ['batch_replace'] },
           target: { type: 'string', enum: ['supplier', 'product', 'location', 'booker', 'customer', 'payment_platform', 'confirmation', 'status'] },
           from_value: { type: 'string' },
-          to_value: { type: 'string' },
+          to_value: { type: 'string', description: '目标值；订单状态请使用 booked、confirming、confirmed、cancelled、pending、ticketed 或 refunded，也可以直接使用中文状态名称' },
           filters: {
             type: 'object',
             additionalProperties: false,
@@ -248,12 +248,18 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
   if (toolName === 'draft_accounting') return { draft: args };
   if (toolName === 'draft_data_change') {
     const target = String(args.target || '');
-    const fromValue = String(args.from_value || '').trim();
-    const toValue = String(args.to_value || '').trim();
+    const statusLabels: Record<string, string> = { booked: '预订中', confirming: '确认中', confirmed: '已确认', cancelled: '已取消', pending: '待出票', ticketed: '已出票', refunded: '已退票', '预订中': '预订中', '确认中': '确认中', '已确认': '已确认', '已取消': '已取消', '待出票': '待出票', '已出票': '已出票', '已退票': '已退票', '已退款': '已退票' };
+    const statusValues: Record<string, string> = { booked: 'booked', confirming: 'confirming', confirmed: 'confirmed', cancelled: 'cancelled', pending: 'pending', ticketed: 'ticketed', refunded: 'refunded', '预订中': 'booked', '确认中': 'confirming', '已确认': 'confirmed', '已取消': 'cancelled', '待出票': 'pending', '已出票': 'ticketed', '已退票': 'refunded', '已退款': 'refunded' };
+    const normalizeChangeValue = (value: unknown) => target === 'status' ? (statusValues[String(value || '').trim()] || String(value || '').trim()) : String(value || '').trim();
+    let fromValue = normalizeChangeValue(args.from_value);
+    const requestedToValue = String(args.to_value || '').trim();
+    const toValue = normalizeChangeValue(requestedToValue);
+    const searchText = String(args.search_text || '').trim();
     const filters = (args.filters && typeof args.filters === 'object' ? args.filters : {}) as Record<string, unknown>;
     const allowedTargets = new Set(['supplier', 'product', 'location', 'booker', 'customer', 'payment_platform', 'confirmation', 'status']);
     if (!allowedTargets.has(target)) throw new Error('批量修改字段不受支持');
-    if (!fromValue || !toValue) throw new Error('批量修改必须同时提供原值和新值');
+    if (!toValue) throw new Error('修改必须提供新值');
+    if (!fromValue && !searchText) throw new Error('请提供订单编号、确认号或原始值');
 
     const { data, error } = await client
       .from('orders')
@@ -265,20 +271,25 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
       const date = String(value || '');
       return (!filters[startKey] || date >= String(filters[startKey])) && (!filters[endKey] || date <= String(filters[endKey]));
     };
-    const matches = (data || []).filter((order: Record<string, unknown>) => {
+    const candidateMatches = (data || []).filter((order: Record<string, unknown>) => {
       if (filters.type && filters.type !== 'all' && order.type !== filters.type) return false;
       if (filters.location && normalized(order.location) !== normalized(filters.location)) return false;
       if (filters.supplier && normalized(order.supplier) !== normalized(filters.supplier)) return false;
       if (filters.booker && normalized(order.booker) !== normalized(filters.booker)) return false;
       if (!inDateRange(order.order_date, 'order_date_start', 'order_date_end')) return false;
       if (!inDateRange(order.service_date, 'service_date_start', 'service_date_end')) return false;
-      const searchText = String(args.search_text || '').trim();
       if (searchText) {
         const haystack = `${order.order_code || ''} ${order.id || ''} ${order.confirmation || ''} ${order.customer || ''} ${order.booker || ''} ${order.location || ''} ${order.supplier || ''} ${order.product || ''}`.toLocaleLowerCase();
         if (!haystack.includes(searchText.toLocaleLowerCase())) return false;
       }
-      return normalized(order[target]) === normalized(fromValue);
+      return true;
     });
+    if (!fromValue) {
+      if (candidateMatches.length === 0) throw new Error(`没有找到与“${searchText}”匹配的订单`);
+      if (candidateMatches.length > 1) throw new Error(`“${searchText}”匹配到 ${candidateMatches.length} 笔订单，请补充订单编号或确认号`);
+      fromValue = String(candidateMatches[0][target] || '').trim();
+    }
+    const matches = candidateMatches.filter((order: Record<string, unknown>) => normalized(order[target]) === normalized(fromValue));
     const targetLabels: Record<string, string> = {
       supplier: '酒店 / 航司', product: '房型 / 航班', location: '城市 / 航线', booker: '预订人',
       customer: '客户', payment_platform: '付款平台', confirmation: '确认号 / 票号', status: '订单状态',
@@ -289,9 +300,11 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
         target,
         target_label: targetLabels[target] || target,
         from_value: fromValue,
+        from_value_label: target === 'status' ? (statusLabels[fromValue] || fromValue) : fromValue,
         to_value: toValue,
+        to_value_label: target === 'status' ? (statusLabels[toValue] || requestedToValue || toValue) : toValue,
         filters,
-        search_text: String(args.search_text || '').trim(),
+        search_text: searchText,
         matched_count: matches.length,
         affected_record_ids: matches.map((order: Record<string, unknown>) => order.id),
         sample_records: matches.slice(0, 8).map((order: Record<string, unknown>) => ({
