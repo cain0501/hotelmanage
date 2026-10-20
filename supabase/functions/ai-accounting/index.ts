@@ -39,9 +39,10 @@ const chatPrompt = (today: string) => `你是酒店运营与旅行知识工作�
 2. “本月”必须转换为当前自然月的明确 start 和 end；不要因为结果为空而改查全部数据。
 3. 如果用户没有说明按下单日期还是入住/出发日期，优先沿用 context_state.date_field；没有已记住的口径且两者会影响结果时，先追问，不要调用统计工具。
 4. 专业酒店规则和知识问题调用 search_knowledge；没有匹配内容时说明当前知识库没有相关资料。
-  5. 新增、收款、返佣和记账操作只生成 draft_accounting；修改已有订单字段使用 draft_data_change。两类操作都不直接写订单或收入表。修改已有订单时，如果用户提供了唯一订单编号、确认号或客户线索，先从真实订单读取当前值，不要要求用户手工提供原值；只有匹配多笔或无法定位时才追问。
-6. 没有实时天气、库存、价格、航班或签证工具时，必须明确说明当前没有对应实时查询能力。
-7. 最终只输出 JSON：{"answer":"中文回答","needs_clarification":false,"unsupported":false}。统计回答必须引用工具返回的范围、日期口径和结果，不得自行重算。`;
+5. 新增、收款、返佣和记账操作只生成 draft_accounting；修改已有订单字段使用 draft_data_change。两类操作都不直接写订单或收入表。修改已有订单时，如果用户提供了唯一订单编号、确认号或客户线索，先从真实订单读取当前值，不要要求用户手工提供原值；只有匹配多笔或无法定位时才追问。
+6. 用户查询订单详情、未付款、待返佣、未开票、重复订单或其它收入时，必须调用对应的只读查询工具；不要用对话历史或综合统计代替明细查询。
+7. 没有实时天气、库存、价格、航班或签证工具时，必须明确说明当前没有对应实时查询能力。
+8. 最终只输出 JSON：{"answer":"中文回答","needs_clarification":false,"unsupported":false}。统计和专项查询回答必须引用工具返回的范围、日期口径和结果，不得自行重算或编造明细。`;
 
 const chatToolRoutingRule = `补充规则：用户要求修改、统一、替换、批量修改已有订单字段时，必须调用 draft_data_change，先查询并返回待确认预览；如果提供了唯一订单编号、确认号或客户线索，可以省略 from_value，由工具自动读取当前值；禁止调用 draft_accounting，也禁止直接写入数据库。用户确认后才允许服务端执行修改。酒店/航司名称归入 supplier，房型/航班归入 product，城市/航线归入 location。`;
 
@@ -96,8 +97,107 @@ const chatTools = [
           location: { type: 'string' },
           supplier: { type: 'string' },
           booker: { type: 'string' },
-          group_by: { type: 'string', enum: ['none', 'location', 'supplier', 'booker'] },
+          group_by: { type: 'string', enum: ['none', 'location', 'supplier', 'booker', 'payment_platform'] },
           include_failed: { type: 'boolean' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_order_detail',
+      description: '按订单编号、确认号、客户、酒店或其它线索查询真实订单明细。只读，不修改数据。',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['search_text'],
+        properties: {
+          search_text: { type: 'string', description: '订单编号、确认号、客户、酒店、航司或房型等检索线索' },
+          include_related_income: { type: 'boolean', description: '是否同时返回关联的其它收入记录' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'find_unpaid_orders',
+      description: '查询客户尚未付款或部分付款的订单；客人前台付款后平台返佣的订单不归入此工具，应使用待返佣查询。',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['date_field', 'start', 'end', 'type'],
+        properties: {
+          date_field: { type: 'string', enum: ['order_date', 'service_date'] }, start: { type: 'string' }, end: { type: 'string' },
+          type: { type: 'string', enum: ['all', 'hotel', 'flight'] }, location: { type: 'string' }, supplier: { type: 'string' }, booker: { type: 'string' },
+          search_text: { type: 'string' }, limit: { type: 'number' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'find_commission_outstanding',
+      description: '查询客人在前台付款、平台尚未返佣或部分返佣的订单。',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['date_field', 'start', 'end', 'type'],
+        properties: {
+          date_field: { type: 'string', enum: ['order_date', 'service_date'] }, start: { type: 'string' }, end: { type: 'string' },
+          type: { type: 'string', enum: ['all', 'hotel', 'flight'] }, location: { type: 'string' }, supplier: { type: 'string' }, booker: { type: 'string' },
+          search_text: { type: 'string' }, limit: { type: 'number' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'find_invoice_issues',
+      description: '查询需要开票但当前仍未开票的订单。默认排除明确标记为无发票的订单。',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['date_field', 'start', 'end', 'type'],
+        properties: {
+          date_field: { type: 'string', enum: ['order_date', 'service_date'] }, start: { type: 'string' }, end: { type: 'string' },
+          type: { type: 'string', enum: ['all', 'hotel', 'flight'] }, location: { type: 'string' }, supplier: { type: 'string' }, booker: { type: 'string' },
+          search_text: { type: 'string' }, include_no_invoice: { type: 'boolean' }, limit: { type: 'number' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'find_duplicate_orders',
+      description: '识别疑似重复订单。优先按相同确认号匹配，也可按客户、酒店/航司、房型/航班和业务日期组合匹配；只读，不自动删除。',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['date_field', 'start', 'end', 'type', 'match_mode'],
+        properties: {
+          date_field: { type: 'string', enum: ['order_date', 'service_date'] }, start: { type: 'string' }, end: { type: 'string' },
+          type: { type: 'string', enum: ['all', 'hotel', 'flight'] }, match_mode: { type: 'string', enum: ['all', 'confirmation', 'same_customer_supplier_date'] },
+          location: { type: 'string' }, supplier: { type: 'string' }, booker: { type: 'string' }, limit: { type: 'number' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_other_income',
+      description: '查询其它收入和其它支出，返回记录、收入、支出和净额汇总。',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['start', 'end', 'search_text', 'kind'],
+        properties: {
+          start: { type: 'string' }, end: { type: 'string' }, search_text: { type: 'string' }, kind: { type: 'string', enum: ['all', 'income', 'expense'] }, limit: { type: 'number' },
         },
       },
     },
@@ -169,6 +269,105 @@ function dateInRange(value: unknown, start: string, end: string) {
   const date = String(value || '');
   if (!start && !end) return true;
   return Boolean(date) && (!start || date >= start) && (!end || date <= end);
+}
+
+const orderQueryFields = 'id,order_code,type,customer,booker,location,supplier,product,confirmation,order_date,service_date,rooms,nights,tickets,gmv,cost,received,payment_status,payment_platform,settlement_mode,guest_payment_to,commission_platform,commission_expected,commission_received,commission_status,direct_cost,commission_received_date,invoice_status,invoice_company,status,profit_override';
+const incomeQueryFields = 'id,income_date,name,payer,payee,order_id,amount,expense';
+const statusLabelMap: Record<string, string> = { booked: '预订中', confirming: '确认中', confirmed: '已确认', cancelled: '已取消', pending: '待出票', ticketed: '已出票', refunded: '已退票' };
+const paymentLabelMap: Record<string, string> = { paid: '已收款', partial: '部分付款', unpaid: '未付款', refunded: '已退款', unknown: '待核对' };
+
+function normalizedText(value: unknown) {
+  return String(value || '').trim().toLocaleLowerCase();
+}
+
+function isFailedOrder(order: Record<string, unknown>) {
+  return ['cancelled', 'refunded'].includes(String(order.status || ''));
+}
+
+function isCommissionOrderRecord(order: Record<string, unknown>) {
+  return order.settlement_mode === 'guest_pay_commission';
+}
+
+function commissionOutstandingRecord(order: Record<string, unknown>) {
+  return Math.max(0, numberValue(order.commission_expected) - numberValue(order.commission_received));
+}
+
+function customerReceivableRecord(order: Record<string, unknown>) {
+  if (isCommissionOrderRecord(order) || isFailedOrder(order)) return false;
+  const gmv = numberValue(order.gmv);
+  const paymentStatus = String(order.payment_status || 'unknown');
+  if (paymentStatus === 'refunded') return false;
+  return gmv > 0 && ['unpaid', 'partial', 'unknown'].includes(paymentStatus) || gmv > numberValue(order.received);
+}
+
+function invoiceIssueRecord(order: Record<string, unknown>, includeNoInvoice = false) {
+  const status = String(order.invoice_status || 'unissued');
+  const noInvoice = status === 'no_invoice' || /无发票/i.test(String(order.invoice_company || ''));
+  return !isFailedOrder(order) && status !== 'issued' && (includeNoInvoice || !noInvoice);
+}
+
+function matchesOrderQuery(order: Record<string, unknown>, args: Record<string, unknown>, options: { includeSearch?: boolean; includeFailed?: boolean } = {}) {
+  const dateField = args.date_field === 'service_date' ? 'service_date' : 'order_date';
+  const type = ['hotel', 'flight'].includes(String(args.type || '')) ? String(args.type) : 'all';
+  if (!options.includeFailed && isFailedOrder(order)) return false;
+  if (!dateInRange(order[dateField], String(args.start || ''), String(args.end || ''))) return false;
+  if (type !== 'all' && order.type !== type) return false;
+  for (const key of ['location', 'supplier', 'booker']) {
+    if (args[key] && !normalizedText(order[key]).includes(normalizedText(args[key]))) return false;
+  }
+  if (options.includeSearch && args.search_text) {
+    const haystack = `${order.id || ''} ${order.order_code || ''} ${order.confirmation || ''} ${order.customer || ''} ${order.booker || ''} ${order.location || ''} ${order.supplier || ''} ${order.product || ''}`.toLocaleLowerCase();
+    if (!haystack.includes(normalizedText(args.search_text))) return false;
+  }
+  return true;
+}
+
+function formatOrderQueryRow(order: Record<string, unknown>) {
+  const isCommission = isCommissionOrderRecord(order);
+  const paymentStatus = isCommission ? (commissionOutstandingRecord(order) > 0 ? (numberValue(order.commission_received) > 0 ? 'partial' : 'unpaid') : 'paid') : String(order.payment_status || 'unknown');
+  return {
+    id: order.id,
+    order_code: order.order_code || order.id,
+    type: order.type,
+    customer: order.customer || '',
+    booker: order.booker || '',
+    location: order.location || '',
+    supplier: order.supplier || '',
+    product: order.product || '',
+    confirmation: order.confirmation || '',
+    order_date: order.order_date || '',
+    service_date: order.service_date || '',
+    rooms: numberValue(order.rooms),
+    nights: numberValue(order.nights),
+    room_nights: order.type === 'hotel' ? numberValue(order.rooms || 1) * numberValue(order.nights) : 0,
+    tickets: numberValue(order.tickets),
+    gmv: numberValue(order.gmv),
+    cost: numberValue(order.cost),
+    received: numberValue(order.received),
+    payment_status: paymentStatus,
+    payment_status_label: paymentLabelMap[paymentStatus] || paymentStatus,
+    payment_platform: order.payment_platform || '',
+    settlement_mode: order.settlement_mode || 'agency_pay',
+    commission_platform: order.commission_platform || '',
+    commission_expected: numberValue(order.commission_expected),
+    commission_received: numberValue(order.commission_received),
+    commission_outstanding: commissionOutstandingRecord(order),
+    invoice_status: order.invoice_status || 'unissued',
+    invoice_company: order.invoice_company || '',
+    status: order.status || '',
+    status_label: statusLabelMap[String(order.status || '')] || order.status || '',
+    profit: orderProfit(order),
+  };
+}
+
+async function loadOrderQueryRows(client: any) {
+  const { data, error } = await client.from('orders').select(orderQueryFields).limit(10000);
+  if (error) throw error;
+  return (data || []) as Record<string, unknown>[];
+}
+
+function queryLimit(args: Record<string, unknown>, fallback = 20) {
+  return Math.min(100, Math.max(1, Math.floor(numberValue(args.limit) || fallback)));
 }
 
 async function createAssistantRun(adminClient: any, userId: string, conversationId: string | null, userMessage: string) {
@@ -243,6 +442,79 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
       return !tokens.length || tokens.some((token) => haystack.includes(token));
     }).slice(0, 8);
     return { knowledge };
+  }
+
+  if (toolName === 'get_order_detail') {
+    const searchText = String(args.search_text || '').trim();
+    if (!searchText) throw new Error('请提供订单编号、确认号、客户或酒店线索');
+    const rows = await loadOrderQueryRows(client);
+    const needle = normalizedText(searchText);
+    const matches = rows.filter((order) => `${order.id || ''} ${order.order_code || ''} ${order.confirmation || ''} ${order.customer || ''} ${order.booker || ''} ${order.location || ''} ${order.supplier || ''} ${order.product || ''}`.toLocaleLowerCase().includes(needle));
+    let relatedIncome: Record<string, unknown>[] = [];
+    if (args.include_related_income === true && matches.length) {
+      const { data, error } = await client.from('other_income').select(incomeQueryFields).limit(10000);
+      if (error) throw error;
+      const ids = new Set(matches.flatMap((order) => [String(order.id || ''), String(order.order_code || '')]));
+      relatedIncome = (data || []).filter((income: Record<string, unknown>) => String(income.order_id || '').split(',').map((id) => id.trim()).some((id) => ids.has(id))).map((income: Record<string, unknown>) => ({
+        id: income.id, date: income.income_date || '', name: income.name || '', payer: income.payer || '', payee: income.payee || '', order_id: income.order_id || '', amount: numberValue(income.amount), expense: numberValue(income.expense), net: numberValue(income.amount) - numberValue(income.expense),
+      }));
+    }
+    return { query_result: { kind: 'order_detail', title: '订单详情', search_text: searchText, matched_count: matches.length, orders: matches.slice(0, queryLimit(args)).map(formatOrderQueryRow), related_income: relatedIncome, truncated: matches.length > queryLimit(args) } };
+  }
+
+  if (toolName === 'find_unpaid_orders') {
+    const rows = (await loadOrderQueryRows(client)).filter((order) => matchesOrderQuery(order, args, { includeSearch: true }) && customerReceivableRecord(order));
+    const orders = rows.slice(0, queryLimit(args)).map(formatOrderQueryRow);
+    return { query_result: { kind: 'unpaid_orders', title: '未付款订单', date_field: args.date_field === 'service_date' ? '入住/出发日期' : '下单日期', start: String(args.start || ''), end: String(args.end || ''), matched_count: rows.length, outstanding_total: rows.reduce((sum, order) => sum + Math.max(0, numberValue(order.gmv) - numberValue(order.received)), 0), orders, truncated: rows.length > orders.length } };
+  }
+
+  if (toolName === 'find_commission_outstanding') {
+    const rows = (await loadOrderQueryRows(client)).filter((order) => matchesOrderQuery(order, args, { includeSearch: true }) && isCommissionOrderRecord(order) && commissionOutstandingRecord(order) > 0);
+    const orders = rows.slice(0, queryLimit(args)).map(formatOrderQueryRow);
+    return { query_result: { kind: 'commission_outstanding', title: '待返佣订单', date_field: args.date_field === 'service_date' ? '入住/出发日期' : '下单日期', start: String(args.start || ''), end: String(args.end || ''), matched_count: rows.length, outstanding_total: rows.reduce((sum, order) => sum + commissionOutstandingRecord(order), 0), orders, truncated: rows.length > orders.length } };
+  }
+
+  if (toolName === 'find_invoice_issues') {
+    const rows = (await loadOrderQueryRows(client)).filter((order) => matchesOrderQuery(order, args, { includeSearch: true }) && invoiceIssueRecord(order, args.include_no_invoice === true));
+    const orders = rows.slice(0, queryLimit(args)).map(formatOrderQueryRow);
+    return { query_result: { kind: 'invoice_issues', title: '待开票订单', date_field: args.date_field === 'service_date' ? '入住/出发日期' : '下单日期', start: String(args.start || ''), end: String(args.end || ''), matched_count: rows.length, orders, truncated: rows.length > orders.length } };
+  }
+
+  if (toolName === 'find_duplicate_orders') {
+    const matchMode = ['confirmation', 'same_customer_supplier_date'].includes(String(args.match_mode)) ? String(args.match_mode) : 'all';
+    const rows = (await loadOrderQueryRows(client)).filter((order) => matchesOrderQuery(order, args));
+    const groups = new Map<string, { reason: string; orders: Record<string, unknown>[] }>();
+    const addGroup = (key: string, reason: string, order: Record<string, unknown>) => {
+      if (!key) return;
+      const group = groups.get(key) || { reason, orders: [] };
+      if (!group.orders.some((item) => item.id === order.id)) group.orders.push(order);
+      groups.set(key, group);
+    };
+    for (const order of rows) {
+      const confirmation = normalizedText(order.confirmation);
+      if (matchMode !== 'same_customer_supplier_date' && confirmation) addGroup(`confirmation:${confirmation}`, '确认号相同', order);
+      if (matchMode !== 'confirmation') {
+        const customer = normalizedText(order.customer), supplier = normalizedText(order.supplier), serviceDate = String(order.service_date || ''), product = normalizedText(order.product);
+        if (customer && supplier && serviceDate) addGroup(`detail:${customer}|${supplier}|${product}|${serviceDate}`, '客户、酒店/航司、产品和业务日期相同', order);
+      }
+    }
+    const duplicateGroups = [...groups.values()].filter((group) => group.orders.length > 1).slice(0, queryLimit(args, 20)).map((group) => ({ reason: group.reason, orders: group.orders.map(formatOrderQueryRow) }));
+    return { query_result: { kind: 'duplicate_orders', title: '疑似重复订单', date_field: args.date_field === 'service_date' ? '入住/出发日期' : '下单日期', start: String(args.start || ''), end: String(args.end || ''), matched_count: duplicateGroups.length, groups: duplicateGroups } };
+  }
+
+  if (toolName === 'search_other_income') {
+    const start = String(args.start || ''), end = String(args.end || ''), searchText = normalizedText(args.search_text), kind = ['income', 'expense'].includes(String(args.kind)) ? String(args.kind) : 'all';
+    const { data, error } = await client.from('other_income').select(incomeQueryFields).limit(10000);
+    if (error) throw error;
+    const matches = (data || []).filter((income: Record<string, unknown>) => {
+      if (!dateInRange(income.income_date, start, end)) return false;
+      if (kind === 'income' && numberValue(income.amount) <= 0) return false;
+      if (kind === 'expense' && numberValue(income.expense) <= 0) return false;
+      if (searchText && !`${income.id || ''} ${income.income_date || ''} ${income.name || ''} ${income.payer || ''} ${income.payee || ''} ${income.order_id || ''}`.toLocaleLowerCase().includes(searchText)) return false;
+      return true;
+    });
+    const records = matches.slice(0, queryLimit(args)).map((income: Record<string, unknown>) => ({ id: income.id, date: income.income_date || '', name: income.name || '', payer: income.payer || '', payee: income.payee || '', order_id: income.order_id || '', amount: numberValue(income.amount), expense: numberValue(income.expense), net: numberValue(income.amount) - numberValue(income.expense) }));
+    return { query_result: { kind: 'other_income', title: '其它收入 / 支出', start, end, matched_count: matches.length, income_total: matches.reduce((sum, income: Record<string, unknown>) => sum + numberValue(income.amount), 0), expense_total: matches.reduce((sum, income: Record<string, unknown>) => sum + numberValue(income.expense), 0), net_total: matches.reduce((sum, income: Record<string, unknown>) => sum + numberValue(income.amount) - numberValue(income.expense), 0), records, truncated: matches.length > records.length } };
   }
 
   if (toolName === 'draft_accounting') return { draft: args };
@@ -327,7 +599,7 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
   const type = ['hotel', 'flight'].includes(String(args.type)) ? String(args.type) : 'all';
   const includeFailed = args.include_failed === true;
   const [ordersResult, incomeResult] = await Promise.all([
-    client.from('orders').select('id,order_code,type,customer,booker,location,supplier,service_date,order_date,rooms,nights,tickets,gmv,cost,received,status,settlement_mode,commission_expected,commission_received,direct_cost,profit_override').limit(10000),
+    client.from('orders').select('id,order_code,type,customer,booker,location,supplier,payment_platform,service_date,order_date,rooms,nights,tickets,gmv,cost,received,status,settlement_mode,commission_expected,commission_received,direct_cost,profit_override').limit(10000),
     client.from('other_income').select('income_date,amount,expense').limit(10000),
   ]);
   if (ordersResult.error) throw ordersResult.error;
@@ -473,6 +745,7 @@ Deno.serve(async (request) => {
       let analysis: Record<string, unknown> | null = null;
       let draft: Record<string, unknown> | null = null;
       let pendingAction: Record<string, unknown> | null = null;
+      const queryResults: Record<string, unknown>[] = [];
       const toolCalls: Array<Record<string, unknown>> = [];
       for (let step = 0; step < 6; step += 1) {
         const modelResult = await callModel(baseUrl, apiKey, { model, temperature, tools: chatTools, tool_choice: 'auto', messages: chatMessages });
@@ -489,7 +762,7 @@ Deno.serve(async (request) => {
           await updateAssistantRun(adminClient, runId, pendingAction
             ? { status: 'waiting_confirmation', current_step: 'waiting_confirmation' }
             : { status: 'completed', current_step: 'completed', completed_at: new Date().toISOString() });
-          return json({ data: { ...finalData, analysis, draft, pending_action: pendingAction }, model, mode, tool_calls: toolCalls });
+          return json({ data: { ...finalData, analysis, draft, pending_action: pendingAction, query_results: queryResults }, model, mode, tool_calls: toolCalls });
         }
         chatMessages.push({ role: 'assistant', content: message.content || null, tool_calls: message.tool_calls });
         for (const call of message.tool_calls) {
@@ -508,6 +781,7 @@ Deno.serve(async (request) => {
             pendingAction = await persistPendingAction(adminClient, user.id, conversationId, runId, toolResult.pending_action as Record<string, unknown>);
             toolResult = { ...toolResult, pending_action: pendingAction };
           }
+          if (toolResult.query_result) queryResults.push(toolResult.query_result as Record<string, unknown>);
           await recordAssistantToolCall(adminClient, user.id, conversationId, runId, toolName, args, toolResult);
           toolCalls.push({ name: toolName, arguments: args, status: toolResult.error ? 'failed' : 'completed' });
           chatMessages.push({ role: 'tool', tool_call_id: call.id, name: toolName, content: JSON.stringify(toolResult) });

@@ -157,6 +157,8 @@
       .assistant-message.assistant{justify-self:start;border-radius:14px 14px 14px 4px;background:#fffdf9;color:#514b43;border:1px solid #eee5d7}
       .assistant-message small{display:block;margin-bottom:4px;color:#9a9287;font-size:10px}
       .assistant-message p{margin:0;white-space:pre-wrap}
+      .assistant-query-card{display:grid;gap:8px;margin-top:10px;padding:10px 11px;background:#f7f1e7;border:1px solid #e2d5bf;border-radius:8px;color:#514b43}
+      .assistant-query-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline}.assistant-query-head strong{color:#143b36;font-size:12px}.assistant-query-head span,.assistant-query-note{color:#8c857a;font-size:10px}.assistant-query-totals{display:flex;gap:12px;flex-wrap:wrap;color:#756f65;font-size:11px}.assistant-query-totals b{color:#287052}.assistant-query-list{display:grid;gap:5px}.assistant-query-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:7px 8px;background:#fffdf9;border-radius:5px;font-size:10px}.assistant-query-row div{min-width:0}.assistant-query-row strong,.assistant-query-row span{display:block;overflow-wrap:anywhere}.assistant-query-row strong{color:#8b6738;font:500 10px "DM Mono",monospace}.assistant-query-row span{margin-top:2px;color:#514b43}.assistant-query-row small{color:#8c857a;white-space:nowrap}.assistant-query-row>b{color:#287052;font:600 10px "DM Mono",monospace;white-space:nowrap}.assistant-query-group{display:grid;gap:3px;padding:7px 8px;background:#fffdf9;border-radius:5px;font-size:10px}.assistant-query-group b{color:#8b6738}.assistant-query-group span{color:#514b43;overflow-wrap:anywhere}.assistant-query-empty{padding:8px;background:#fffdf9;border-radius:5px;color:#8c857a;font-size:10px}.assistant-query-note{display:block}
       .assistant-message.empty{width:auto;max-width:none;padding:16px;background:transparent;border:0;box-shadow:none}
       .assistant-analysis{width:min(92%,760px);padding:13px 14px;background:#173f39;color:#eef5ee;border:0}
       .assistant-analysis small{color:#c2d9cd}
@@ -262,7 +264,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-           <small class="app-version">版本 20261020-37</small>
+           <small class="app-version">版本 20261020-38</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -605,6 +607,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261020-37"></script>
+    <script src="app.js?v=20261020-38"></script>
   </body>
 </html>

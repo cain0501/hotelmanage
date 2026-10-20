@@ -948,6 +948,25 @@ function assistantMessageMetadata(message){
   try{return JSON.parse(message.metadata)||{};}catch{return {};}
 }
 
+function renderAssistantQueryResults(results){
+  if(!Array.isArray(results)||!results.length)return '';
+  const orderLine=order=>{const due=Number(order.commission_outstanding||0)>0?`待返 ${compactCurrency(order.commission_outstanding)}`:['unpaid','partial'].includes(order.payment_status)?`待收 ${compactCurrency(Math.max(0,Number(order.gmv||0)-Number(order.received||0)))}`:'';return `<div class="assistant-query-row"><div><strong>${escapeHtml(order.order_code||order.id||'订单')}</strong><span>${escapeHtml([order.customer,order.supplier,order.product].filter(Boolean).join(' · ')||'未填写基础信息')}</span></div><small>${escapeHtml(order.service_date||order.order_date||'未填写日期')} · ${escapeHtml(order.payment_status_label||order.status_label||'')}</small>${due?`<b>${escapeHtml(due)}</b>`:''}</div>`;};
+  return results.map(result=>{
+    const title=String(result.title||'查询结果'),count=Number(result.matched_count||0),scope=result.start&&result.end?`${result.start} 至 ${result.end}`:'全部数据';
+    if(result.kind==='other_income'){
+      const records=Array.isArray(result.records)?result.records:[];
+      return `<section class="assistant-query-card"><div class="assistant-query-head"><strong>${escapeHtml(title)}</strong><span>${count} 条 · ${escapeHtml(scope)}</span></div><div class="assistant-query-totals"><span>收入 ${compactCurrency(result.income_total||0)}</span><span>支出 ${compactCurrency(result.expense_total||0)}</span><b>净额 ${compactCurrency(result.net_total||0)}</b></div>${records.length?`<div class="assistant-query-list">${records.map(item=>`<div class="assistant-query-row"><div><strong>${escapeHtml(item.date||'未填写日期')}</strong><span>${escapeHtml(item.name||'未命名')}</span></div><small>${escapeHtml(item.payer||item.payee||'未填写往来方')} · 关联 ${escapeHtml(item.order_id||'无')}</small><b>${compactCurrency(item.net||0)}</b></div>`).join('')}</div>`:'<div class="assistant-query-empty">没有找到符合条件的其它收入或支出。</div>'}${result.truncated?'<small class="assistant-query-note">仅展示部分记录，完整结果请缩小查询范围。</small>':''}</section>`;
+    }
+    if(result.kind==='duplicate_orders'){
+      const groups=Array.isArray(result.groups)?result.groups:[];
+      return `<section class="assistant-query-card"><div class="assistant-query-head"><strong>${escapeHtml(title)}</strong><span>${count} 组 · ${escapeHtml(scope)}</span></div>${groups.length?`<div class="assistant-query-list">${groups.map(group=>`<div class="assistant-query-group"><b>${escapeHtml(group.reason||'疑似重复')}</b><span>${(Array.isArray(group.orders)?group.orders:[]).map(order=>escapeHtml(order.order_code||order.id||'订单')).join('、')}</span></div>`).join('')}</div>`:'<div class="assistant-query-empty">没有发现符合条件的疑似重复订单。</div>'}</section>`;
+    }
+    const orders=Array.isArray(result.orders)?result.orders:[];
+    const amount=result.kind==='commission_outstanding'?`待返佣 ${compactCurrency(result.outstanding_total||0)}`:result.kind==='unpaid_orders'?`待收 ${compactCurrency(result.outstanding_total||0)}`:'';
+    return `<section class="assistant-query-card"><div class="assistant-query-head"><strong>${escapeHtml(title)}</strong><span>${count} 笔 · ${escapeHtml(scope)}</span></div>${amount?`<div class="assistant-query-totals"><b>${escapeHtml(amount)}</b></div>`:''}${orders.length?`<div class="assistant-query-list">${orders.map(orderLine).join('')}</div>`:'<div class="assistant-query-empty">没有找到符合条件的订单。</div>'}${result.truncated?'<small class="assistant-query-note">仅展示部分记录，完整结果请缩小查询范围。</small>':''}</section>`;
+  }).join('');
+}
+
 function renderAssistantConversation(){
   const panel=byId('assistantConversation');if(!panel)return;
   const messages=assistantMessages.slice(-12);
@@ -961,7 +980,8 @@ function renderAssistantConversation(){
       return `<article class="assistant-message assistant assistant-analysis"><small>AI · ${created} · 确定性工具</small><p>${escapeHtml(message.content||analysis.answer||'统计已完成。')}</p><div class="assistant-analysis-metrics"><div><span>订单数</span><b>${Number(summary.orders||0)}</b></div><div><span>GMV</span><b>${compactCurrency(summary.gmv||0)}</b></div><div><span>房晚</span><b>${Number(summary.roomNights||0)}</b></div><div><span>订单利润</span><b>${compactCurrency(summary.profit||0)}</b></div></div><div class="assistant-analysis-scope">统计口径：${escapeHtml(scope)}</div></article>`;
     }
     const sources=Array.isArray(metadata.knowledge_sources)?metadata.knowledge_sources:[];
-    return `<article class="assistant-message ${message.role==='user'?'user':'assistant'}"><small>${message.role==='user'?'你':'AI'} · ${created}</small><p>${escapeHtml(message.content||'')}</p>${sources.length?`<div class="assistant-knowledge">参考知识：${sources.map(source=>escapeHtml(source.title||'未命名知识')).join('、')}</div>`:''}</article>`;
+    const queryResults=message.role==='assistant'?renderAssistantQueryResults(metadata.query_results):'';
+    return `<article class="assistant-message ${message.role==='user'?'user':'assistant'}"><small>${message.role==='user'?'你':'AI'} · ${created}</small><p>${escapeHtml(message.content||'')}</p>${queryResults}${sources.length?`<div class="assistant-knowledge">参考知识：${sources.map(source=>escapeHtml(source.title||'未命名知识')).join('、')}</div>`:''}</article>`;
   }).join(''):'<div class="assistant-message empty">当前会话会记住日期口径、筛选条件和已确认的业务规则。</div>';
   panel.scrollTop=panel.scrollHeight;
 }
@@ -985,8 +1005,8 @@ async function runAssistantChat(question){
       if(summaryCall?.arguments)await saveAssistantContext({date_field:summaryCall.arguments.date_field,period_start:summaryCall.arguments.start||null,period_end:summaryCall.arguments.end||null,order_type:summaryCall.arguments.type||'all',city:summaryCall.arguments.location||'',supplier:summaryCall.arguments.supplier||'',booker:summaryCall.arguments.booker||''});
     }
     const answer=data.analysis?.answer||data.answer||(data.pending_action?`已生成批量修改预览，请确认影响范围后执行。`:data.draft&&aiDraftIntents.has(data.draft.intent)?`已生成${aiIntentText(data.draft.intent)}草稿，请确认后再填入表单。`:'当前没有可回答的内容。');
-    await saveAssistantMessage('assistant',answer,{intent:data.analysis?'business_query':data.pending_action?'data_change':data.draft&&aiDraftIntents.has(data.draft.intent)?'accounting_draft':'general_assistance',analysis:data.analysis||null,knowledge_sources:data.knowledge_sources||[],unsupported:Boolean(data.unsupported),tool_calls:result.tool_calls||[]});
-    status.textContent=data.analysis?'统计完成，结果已加入对话。':data.pending_action?'已生成批量修改预览，请确认后执行。':data.draft&&aiDraftIntents.has(data.draft.intent)?'已生成草稿，请确认后再填入表单。':'回答完成。';status.className='ai-status success';
+    await saveAssistantMessage('assistant',answer,{intent:data.analysis?'business_query':data.pending_action?'data_change':data.draft&&aiDraftIntents.has(data.draft.intent)?'accounting_draft':Array.isArray(data.query_results)&&data.query_results.length?'business_query':'general_assistance',analysis:data.analysis||null,query_results:data.query_results||[],knowledge_sources:data.knowledge_sources||[],unsupported:Boolean(data.unsupported),tool_calls:result.tool_calls||[]});
+    status.textContent=data.analysis?'统计完成，结果已加入对话。':Array.isArray(data.query_results)&&data.query_results.length?'查询完成，明细已加入对话。':data.pending_action?'已生成批量修改预览，请确认后执行。':data.draft&&aiDraftIntents.has(data.draft.intent)?'已生成草稿，请确认后再填入表单。':'回答完成。';status.className='ai-status success';
   }catch(error){status.textContent=error.message;status.className='ai-status error';}
   finally{button.disabled=false;button.textContent='交给 AI 处理';}
 }
