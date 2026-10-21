@@ -22,6 +22,9 @@ create table if not exists public.orders (
   cost numeric not null default 0,
   received numeric not null default 0,
   payment_status text not null default 'paid',
+  customer_payment_status text not null default 'paid',
+  supplier_paid numeric not null default 0,
+  supplier_payment_status text not null default 'unknown',
   payment_platform text not null default '',
   settlement_mode text not null default 'agency_pay',
   guest_payment_to text not null default '',
@@ -97,6 +100,9 @@ alter table public.orders add column if not exists gmv numeric default 0;
 alter table public.orders add column if not exists cost numeric default 0;
 alter table public.orders add column if not exists received numeric default 0;
 alter table public.orders add column if not exists payment_status text default 'paid';
+alter table public.orders add column if not exists customer_payment_status text default 'paid';
+alter table public.orders add column if not exists supplier_paid numeric default 0;
+alter table public.orders add column if not exists supplier_payment_status text default 'unknown';
 alter table public.orders add column if not exists payment_platform text default '';
 alter table public.orders add column if not exists settlement_mode text default 'agency_pay';
 alter table public.orders add column if not exists guest_payment_to text default '';

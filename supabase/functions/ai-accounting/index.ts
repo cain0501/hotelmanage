@@ -19,7 +19,7 @@ const accountingSchema = {
   order: {
     type: 'hotel | flight', customer: 'string', booker: 'string', order_date: 'YYYY-MM-DD', service_date: 'YYYY-MM-DD',
     location: 'string', supplier: 'string', product: 'string', confirmation: 'string', rooms: 'number', nights: 'number',
-    tickets: 'number', gmv: 'number', cost: 'number', payment_status: 'paid | partial | unpaid | refunded', payment_platform: 'string',
+    tickets: 'number', gmv: 'number', cost: 'number', payment_status: 'paid | partial | unpaid | refunded', customer_payment_status: 'paid | partial | unpaid | refunded | not_applicable', supplier_paid: 'number', supplier_payment_status: 'paid | partial | unpaid | unknown | not_required', payment_platform: 'string',
     status: 'booked | confirming | confirmed | cancelled | pending | ticketed | refunded', commission_platform: 'string',
     commission_expected: 'number', commission_received: 'number', direct_cost: 'number', guest_payment_to: 'string',
   },
@@ -125,6 +125,23 @@ const chatTools = [
     function: {
       name: 'find_unpaid_orders',
       description: '查询客户尚未付款或部分付款的订单；客人前台付款后平台返佣的订单不归入此工具，应使用待返佣查询。',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['date_field', 'start', 'end', 'type'],
+        properties: {
+          date_field: { type: 'string', enum: ['order_date', 'service_date'] }, start: { type: 'string' }, end: { type: 'string' },
+          type: { type: 'string', enum: ['all', 'hotel', 'flight'] }, location: { type: 'string' }, supplier: { type: 'string' }, booker: { type: 'string' },
+          search_text: { type: 'string' }, limit: { type: 'number' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'find_supplier_payables',
+      description: '\u67e5\u8be2\u6211\u65b9\u8fd8\u672a\u5411\u4f9b\u5e94\u5546\u6216\u5e73\u53f0\u4ed8\u6b3e\u7684\u8ba2\u5355\uff0c\u4e0e\u5ba2\u6237\u6536\u6b3e\u5206\u5f00\u7edf\u8ba1\u3002',
       parameters: {
         type: 'object',
         additionalProperties: false,
@@ -253,7 +270,7 @@ const chatTools = [
               type: { type: 'string' }, customer: { type: 'string' }, booker: { type: 'string' }, order_date: { type: 'string' },
               service_date: { type: 'string' }, location: { type: 'string' }, supplier: { type: 'string' }, product: { type: 'string' },
               confirmation: { type: 'string' }, rooms: { type: 'number' }, nights: { type: 'number' }, tickets: { type: 'number' },
-              gmv: { type: 'number' }, cost: { type: 'number' }, payment_status: { type: 'string' }, payment_platform: { type: 'string' },
+              gmv: { type: 'number' }, cost: { type: 'number' }, payment_status: { type: 'string' }, customer_payment_status: { type: 'string' }, supplier_paid: { type: 'number' }, supplier_payment_status: { type: 'string' }, payment_platform: { type: 'string' },
               status: { type: 'string' }, commission_platform: { type: 'string' }, commission_expected: { type: 'number' },
               commission_received: { type: 'number' }, direct_cost: { type: 'number' }, guest_payment_to: { type: 'string' },
             },
@@ -289,10 +306,13 @@ function dateInRange(value: unknown, start: string, end: string) {
   return Boolean(date) && (!start || date >= start) && (!end || date <= end);
 }
 
-const orderQueryFields = 'id,order_code,type,customer,booker,location,supplier,product,confirmation,order_date,service_date,rooms,nights,tickets,gmv,cost,received,payment_status,payment_platform,settlement_mode,guest_payment_to,commission_platform,commission_expected,commission_received,commission_status,direct_cost,commission_received_date,invoice_status,invoice_company,status,profit_override';
+const orderQueryFields = 'id,order_code,type,customer,booker,location,supplier,product,confirmation,order_date,service_date,rooms,nights,tickets,gmv,cost,received,payment_status,customer_payment_status,supplier_paid,supplier_payment_status,payment_platform,settlement_mode,guest_payment_to,commission_platform,commission_expected,commission_received,commission_status,direct_cost,commission_received_date,invoice_status,invoice_company,status,profit_override';
 const incomeQueryFields = 'id,income_date,name,payer,payee,order_id,amount,expense';
 const statusLabelMap: Record<string, string> = { booked: '预订中', confirming: '确认中', confirmed: '已确认', cancelled: '已取消', pending: '待出票', ticketed: '已出票', refunded: '已退票' };
 const paymentLabelMap: Record<string, string> = { paid: '已收款', partial: '部分付款', unpaid: '未付款', refunded: '已退款', unknown: '待核对' };
+
+const supplierPaymentLabelMap: Record<string, string> = { paid: '\u5df2\u4ed8\u6b3e', partial: '\u90e8\u5206\u4ed8\u6b3e', unpaid: '\u672a\u4ed8\u6b3e', unknown: '\u5f85\u6838\u5bf9', not_required: '\u65e0\u9700\u4ed8\u6b3e' };
+const customerPaymentLabelMap: Record<string, string> = { paid: '\u5df2\u6536\u6b3e', partial: '\u90e8\u5206\u6536\u6b3e', unpaid: '\u672a\u6536\u6b3e', refunded: '\u5df2\u9000\u6b3e', unknown: '\u5f85\u6838\u5bf9', not_applicable: '\u4e0d\u9002\u7528' };
 
 function normalizedText(value: unknown) {
   return String(value || '').trim().toLocaleLowerCase();
@@ -310,10 +330,30 @@ function commissionOutstandingRecord(order: Record<string, unknown>) {
   return Math.max(0, numberValue(order.commission_expected) - numberValue(order.commission_received));
 }
 
+function customerPaymentStatusRecord(order: Record<string, unknown>) {
+  if (isCommissionOrderRecord(order) || String(order.settlement_mode || '') === 'no_funds') return 'not_applicable';
+  return String(order.customer_payment_status || order.payment_status || (numberValue(order.received) >= numberValue(order.gmv) ? 'paid' : numberValue(order.received) > 0 ? 'partial' : 'unpaid'));
+}
+
+function supplierPaidRecord(order: Record<string, unknown>) {
+  if (isCommissionOrderRecord(order) || String(order.settlement_mode || '') === 'no_funds') return 0;
+  return numberValue(order.supplier_paid);
+}
+
+function supplierPaymentStatusRecord(order: Record<string, unknown>) {
+  if (isCommissionOrderRecord(order) || String(order.settlement_mode || '') === 'no_funds') return 'not_required';
+  return String(order.supplier_payment_status || 'unknown');
+}
+
+function supplierPayableRecord(order: Record<string, unknown>) {
+  if (isCommissionOrderRecord(order) || String(order.settlement_mode || '') === 'no_funds' || isFailedOrder(order)) return false;
+  return ['unpaid', 'partial'].includes(supplierPaymentStatusRecord(order));
+}
+
 function customerReceivableRecord(order: Record<string, unknown>) {
   if (isCommissionOrderRecord(order) || isFailedOrder(order)) return false;
   const gmv = numberValue(order.gmv);
-  const paymentStatus = String(order.payment_status || 'unknown');
+  const paymentStatus = customerPaymentStatusRecord(order);
   if (paymentStatus === 'refunded') return false;
   return gmv > 0 && ['unpaid', 'partial', 'unknown'].includes(paymentStatus) || gmv > numberValue(order.received);
 }
@@ -342,7 +382,8 @@ function matchesOrderQuery(order: Record<string, unknown>, args: Record<string, 
 
 function formatOrderQueryRow(order: Record<string, unknown>) {
   const isCommission = isCommissionOrderRecord(order);
-  const paymentStatus = isCommission ? (commissionOutstandingRecord(order) > 0 ? (numberValue(order.commission_received) > 0 ? 'partial' : 'unpaid') : 'paid') : String(order.payment_status || 'unknown');
+  const paymentStatus = isCommission ? (commissionOutstandingRecord(order) > 0 ? (numberValue(order.commission_received) > 0 ? 'partial' : 'unpaid') : 'paid') : customerPaymentStatusRecord(order);
+  const supplierStatus = supplierPaymentStatusRecord(order);
   return {
     id: order.id,
     order_code: order.order_code || order.id,
@@ -363,7 +404,12 @@ function formatOrderQueryRow(order: Record<string, unknown>) {
     cost: numberValue(order.cost),
     received: numberValue(order.received),
     payment_status: paymentStatus,
-    payment_status_label: paymentLabelMap[paymentStatus] || paymentStatus,
+    customer_payment_status: paymentStatus,
+    payment_status_label: customerPaymentLabelMap[paymentStatus] || paymentStatus,
+    supplier_payment_status: supplierStatus,
+    supplier_payment_status_label: supplierPaymentLabelMap[supplierStatus] || supplierStatus,
+    supplier_paid: supplierPaidRecord(order),
+    supplier_due: Math.max(0, numberValue(order.cost) - supplierPaidRecord(order)),
     payment_platform: order.payment_platform || '',
     settlement_mode: order.settlement_mode || 'agency_pay',
     commission_platform: order.commission_platform || '',
@@ -534,6 +580,12 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
     return { query_result: { kind: 'unpaid_orders', title: '未付款订单', date_field: args.date_field === 'service_date' ? '入住/出发日期' : '下单日期', start: String(args.start || ''), end: String(args.end || ''), matched_count: rows.length, outstanding_total: rows.reduce((sum, order) => sum + Math.max(0, numberValue(order.gmv) - numberValue(order.received)), 0), orders, truncated: rows.length > orders.length } };
   }
 
+  if (toolName === 'find_supplier_payables') {
+    const rows = (await loadOrderQueryRows(client)).filter((order) => matchesOrderQuery(order, args, { includeSearch: true }) && supplierPayableRecord(order));
+    const orders = rows.slice(0, queryLimit(args)).map(formatOrderQueryRow);
+    return { query_result: { kind: 'supplier_payables', title: '\u4f9b\u5e94\u5546 / \u5e73\u53f0\u5f85\u4ed8\u6b3e', date_field: args.date_field === 'service_date' ? '\u5165\u4f4f/\u51fa\u53d1\u65e5\u671f' : '\u4e0b\u5355\u65e5\u671f', start: String(args.start || ''), end: String(args.end || ''), matched_count: rows.length, payable_total: rows.reduce((sum, order) => sum + Math.max(0, numberValue(order.cost) - supplierPaidRecord(order)), 0), orders, truncated: rows.length > orders.length } };
+  }
+
   if (toolName === 'find_commission_outstanding') {
     const rows = (await loadOrderQueryRows(client)).filter((order) => matchesOrderQuery(order, args, { includeSearch: true }) && isCommissionOrderRecord(order) && commissionOutstandingRecord(order) > 0);
     const orders = rows.slice(0, queryLimit(args)).map(formatOrderQueryRow);
@@ -665,7 +717,7 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
   const type = ['hotel', 'flight'].includes(String(args.type)) ? String(args.type) : 'all';
   const includeFailed = args.include_failed === true;
   const [ordersResult, incomeResult] = await Promise.all([
-    client.from('orders').select('id,order_code,type,customer,booker,location,supplier,payment_platform,service_date,order_date,rooms,nights,tickets,gmv,cost,received,status,settlement_mode,commission_expected,commission_received,direct_cost,profit_override').limit(10000),
+    client.from('orders').select('id,order_code,type,customer,booker,location,supplier,payment_platform,service_date,order_date,rooms,nights,tickets,gmv,cost,received,status,settlement_mode,commission_expected,commission_received,direct_cost,profit_override,customer_payment_status,payment_status,supplier_paid,supplier_payment_status').limit(10000),
     client.from('other_income').select('income_date,amount,expense').limit(10000),
   ]);
   if (ordersResult.error) throw ordersResult.error;
@@ -688,6 +740,9 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
     roomNights: rows.reduce((sum, order) => sum + (order.type === 'hotel' ? numberValue(order.rooms || 1) * numberValue(order.nights) : 0), 0),
     tickets: rows.reduce((sum, order) => sum + numberValue(order.tickets), 0),
     received: rows.reduce((sum, order) => sum + numberValue(order.received), 0),
+    customerReceivable: rows.reduce((sum, order) => sum + (customerReceivableRecord(order) ? Math.max(0, numberValue(order.gmv) - numberValue(order.received)) : 0), 0),
+    supplierPayable: rows.reduce((sum, order) => sum + (supplierPayableRecord(order) ? Math.max(0, numberValue(order.cost) - supplierPaidRecord(order)) : 0), 0),
+    supplierPaid: rows.reduce((sum, order) => sum + supplierPaidRecord(order), 0),
     expectedCommission: rows.reduce((sum, order) => sum + numberValue(order.commission_expected), 0),
     receivedCommission: rows.reduce((sum, order) => sum + numberValue(order.commission_received), 0),
     otherIncome: incomes.reduce((sum, income) => sum + numberValue(income.amount), 0),

@@ -36,6 +36,7 @@ let dateEnd = '';
 let dashboardDateField = 'orderDate';
 let statusFilter = 'all';
 let paymentFilter = 'all';
+let supplierPaymentFilter = 'all';
 let invoiceFilter = 'all';
 let locationFilter = '';
 let supplierFilter = '';
@@ -156,10 +157,16 @@ const commissionStatusText = order => ({ pending:'待返佣', partial:'部分返
 const expectedProfit = order => isCommissionOrder(order) ? commissionExpected(order) - directCost(order) : Number(order.gmv) - Number(order.cost);
 const profit = order => order.profitOverride !== null && order.profitOverride !== undefined && !isCommissionOrder(order) ? Number(order.profitOverride) : isCommissionOrder(order) ? commissionReceived(order) - directCost(order) : Number(order.gmv) - Number(order.cost);
 const roomNights = order => order.type === 'hotel' ? Number(order.rooms || 1) * Number(order.nights || 0) : 0;
-const payment = order => isCommissionOrder(order) ? (commissionStatus(order)==='pending'?'unpaid':commissionStatus(order)==='partial'?'partial':'paid') : order.paymentStatus || (order.received >= order.gmv ? 'paid' : order.received > 0 ? 'partial' : 'unpaid');
-const paymentText = order => isCommissionOrder(order) ? commissionStatusText(order) : ({ paid:'已收款', partial:'部分付款', unpaid:'未付款', refunded:'已退款', unknown:'待核对' })[payment(order)];
+const customerPaymentStatus = order => isCommissionOrder(order)||settlementMode(order)==='no_funds' ? 'not_applicable' : order.customerPaymentStatus || order.paymentStatus || (order.received >= order.gmv ? 'paid' : order.received > 0 ? 'partial' : 'unpaid');
+const supplierPaid = order => isCommissionOrder(order)||settlementMode(order)==='no_funds' ? 0 : asNumber(order.supplierPaid);
+const supplierPaymentStatus = order => isCommissionOrder(order)||settlementMode(order)==='no_funds' ? 'not_required' : order.supplierPaymentStatus || 'unknown';
+const supplierPaymentText = order => ({ paid:'已付款', partial:'部分付款', unpaid:'未付款', unknown:'待核对', not_required:'无需付款' })[supplierPaymentStatus(order)] || '待核对';
+const payment = order => isCommissionOrder(order) ? (commissionStatus(order)==='pending'?'unpaid':commissionStatus(order)==='partial'?'partial':'paid') : customerPaymentStatus(order);
+const paymentText = order => isCommissionOrder(order) ? commissionStatusText(order) : ({ paid:'已收款', partial:'部分收款', unpaid:'未收款', refunded:'已退款', unknown:'待核对', not_applicable:'无需收款' })[customerPaymentStatus(order)];
 const settlementText = order => ({ agency_pay:'我方代付', guest_pay_commission:'客人前台支付 · 平台返佣', no_funds:'无资金往来' })[settlementMode(order)] || '我方代付';
-const customerReceivable = order => !isCommissionOrder(order) && (payment(order)==='unpaid'||payment(order)==='partial');
+const customerReceivable = order => !isCommissionOrder(order) && ['unpaid','partial'].includes(customerPaymentStatus(order));
+const supplierPayable = order => !isCommissionOrder(order) && settlementMode(order)!=='no_funds' && ['unpaid','partial'].includes(supplierPaymentStatus(order));
+const paymentIssue = order => isCommissionOrder(order) ? commissionOutstanding(order)>0 : customerReceivable(order)||supplierPayable(order);
 const invoiceStatus = order => order.invoiceStatus === 'issued' && /无发票/.test(order.invoiceCompany || '') ? 'no_invoice' : order.invoiceStatus || (order.invoiceCompany ? 'issued' : 'unissued');
 const invoiceText = order => ({ issued:'已开票', unissued:'未开票', no_invoice:'无发票' })[invoiceStatus(order)] || '未开票';
 const statusText = order => ({ booked:'预订中', confirming:'确认中', confirmed:'已确认', cancelled:'已取消', pending:'待出票', ticketed:'已出票', refunded:'已退票' })[order.status] || '待确认';
@@ -170,14 +177,14 @@ const orderToRow = order => ({
   id: order.id, user_id: currentUser?.id, order_code: orderCode(order), type: order.type,
   customer: order.customer || '', booker: order.booker || '', order_date: emptyToNull(order.orderDate), service_date: emptyToNull(order.serviceDate),
   location: order.location || '', supplier: order.supplier || '', product: order.product || '', rooms: asNumber(order.rooms), nights: asNumber(order.nights), tickets: asNumber(order.tickets),
-  confirmation: order.confirmation || '', gmv: asNumber(order.gmv), cost: asNumber(order.cost), received: asNumber(order.received), payment_status: payment(order),
+  confirmation: order.confirmation || '', gmv: asNumber(order.gmv), cost: asNumber(order.cost), received: asNumber(order.received), payment_status: customerPaymentStatus(order), customer_payment_status: customerPaymentStatus(order), supplier_paid: supplierPaid(order), supplier_payment_status: supplierPaymentStatus(order),
   payment_platform: order.paymentPlatform || '', settlement_mode: settlementMode(order), guest_payment_to: order.guestPaymentTo || '', commission_platform: order.commissionPlatform || '', commission_expected: commissionExpected(order), commission_received: commissionReceived(order), commission_status: commissionStatus(order), direct_cost: directCost(order), commission_received_date: emptyToNull(order.commissionReceivedDate), invoice_status: invoiceStatus(order), invoice_company: order.invoiceCompany || '', profit_override: emptyToNull(order.profitOverride),
   status: order.status || 'booked', issues: Array.isArray(order.issues) ? order.issues : []
 });
 const rowToOrder = row => ({
   id: row.id, orderCode: row.order_code || row.id, type: row.type || 'hotel', customer: row.customer || '', booker: row.booker || '', orderDate: row.order_date || '', serviceDate: row.service_date || '',
   location: row.location || '', supplier: row.supplier || '', product: row.product || '', rooms: asNumber(row.rooms), nights: asNumber(row.nights), tickets: asNumber(row.tickets), confirmation: row.confirmation || '',
-  gmv: asNumber(row.gmv), cost: asNumber(row.cost), received: asNumber(row.received), paymentStatus: row.payment_status || 'paid', paymentPlatform: row.payment_platform || '',
+  gmv: asNumber(row.gmv), cost: asNumber(row.cost), received: asNumber(row.received), paymentStatus: row.payment_status || 'paid', customerPaymentStatus: row.customer_payment_status || row.payment_status || 'paid', supplierPaid: asNumber(row.supplier_paid), supplierPaymentStatus: row.supplier_payment_status || 'unknown', paymentPlatform: row.payment_platform || '',
   invoiceStatus: row.invoice_status || 'unissued', invoiceCompany: row.invoice_company || '', settlementMode: row.settlement_mode || 'agency_pay', guestPaymentTo: row.guest_payment_to || '', commissionPlatform: row.commission_platform || '', commissionExpected: asNumber(row.commission_expected), commissionReceived: asNumber(row.commission_received), commissionStatus: row.commission_status || 'none', directCost: asNumber(row.direct_cost), commissionReceivedDate: row.commission_received_date || '', profitOverride: row.profit_override === null || row.profit_override === undefined ? null : asNumber(row.profit_override),
   status: row.status || 'booked', issues: Array.isArray(row.issues) ? row.issues : []
 });
@@ -427,15 +434,18 @@ const issueEntries = () => orders.flatMap(order => {
   if (!order.serviceDate) issues.push('缺少业务日期');
   const servicePassed=Boolean(order.serviceDate&&order.serviceDate<today);
   if (isCommissionOrder(order) && commissionOutstanding(order)>0) { issues.push(servicePassed?'返佣逾期':'存在待返佣'); }
-  else if (payment(order) === 'unpaid' || payment(order) === 'partial') { issues.push(servicePassed&&order.type==='hotel'?'已入住未收款':servicePassed&&order.type==='flight'&&order.status==='ticketed'?'已出票未收款':'存在待收款'); }
+  else {
+    if (customerReceivable(order)) issues.push(servicePassed&&order.type==='hotel'?'已入住未收款':servicePassed&&order.type==='flight'&&order.status==='ticketed'?'已出票未收款':'客户存在待收款');
+    if (supplierPayable(order)) issues.push('供应商 / 平台待付款');
+  }
   if (!isCommissionOrder(order) && Number(order.gmv||0)>0 && Number(order.cost||0)>Number(order.gmv||0)) issues.push('成本高于 GMV');
   if (!isCommissionOrder(order) && order.profitOverride!==null && order.profitOverride!==undefined && Math.abs(Number(order.profitOverride)-(Number(order.gmv||0)-Number(order.cost||0)))>0.01) issues.push('利润与 GMV/成本不一致');
-  if (payment(order) === 'unknown') issues.push('付款状态待确认');
+  if (!isCommissionOrder(order) && customerPaymentStatus(order) === 'unknown') issues.push('客户收款状态待核对');
   return [...new Set(issues)].map(issue => ({ order, issue }));
 });
 
 function filteredOrders() {
-  return orders.filter(order => { const date=order[dateField]||''; return (activeType === 'all' || order.type === activeType) && (statusFilter==='all'||order.status===statusFilter) && (paymentFilter==='all'||payment(order)===paymentFilter) && (invoiceFilter==='all'||invoiceStatus(order)===invoiceFilter) && `${order.customer} ${order.booker} ${order.supplier} ${order.product} ${order.confirmation} ${order.location}`.toLowerCase().includes(searchTerm.toLowerCase()) && String(order.location||'').toLowerCase().includes(locationFilter.toLowerCase()) && String(order.supplier||'').toLowerCase().includes(supplierFilter.toLowerCase()) && (!dateStart || date>=dateStart) && (!dateEnd || date<=dateEnd); });
+  return orders.filter(order => { const date=order[dateField]||''; return (activeType === 'all' || order.type === activeType) && (statusFilter==='all'||order.status===statusFilter) && (paymentFilter==='all'||customerPaymentStatus(order)===paymentFilter) && (supplierPaymentFilter==='all'||supplierPaymentStatus(order)===supplierPaymentFilter) && (invoiceFilter==='all'||invoiceStatus(order)===invoiceFilter) && `${order.customer} ${order.booker} ${order.supplier} ${order.product} ${order.confirmation} ${order.location}`.toLowerCase().includes(searchTerm.toLowerCase()) && String(order.location||'').toLowerCase().includes(locationFilter.toLowerCase()) && String(order.supplier||'').toLowerCase().includes(supplierFilter.toLowerCase()) && (!dateStart || date>=dateStart) && (!dateEnd || date<=dateEnd); });
 }
 function updateStatusOptions(){const type=byId('typeSelect').value;const options=[['all','全部状态'],...(type==='flight'?[['pending','待出票'],['ticketed','已出票'],['refunded','已退票']]:type==='hotel'?[['booked','预订中'],['confirming','确认中'],['confirmed','已确认'],['cancelled','已取消']]:[['booked','预订中'],['confirming','确认中'],['confirmed','已确认'],['cancelled','已取消'],['pending','待出票'],['ticketed','已出票'],['refunded','已退票']])];byId('statusFilter').innerHTML=options.map(([v,t])=>`<option value="${v}">${t}</option>`).join('');if(options.some(([v])=>v===statusFilter))byId('statusFilter').value=statusFilter;else{statusFilter='all';byId('statusFilter').value='all';}}
 function syncDashboardMonthPicker() {
@@ -459,6 +469,29 @@ function transactionRows() {
 }
 function sums(list) { return list.reduce((acc, order) => ({ gmv:acc.gmv + Number(order.gmv), cost:acc.cost + Number(order.cost), profit:acc.profit + profit(order), received:acc.received + Number(order.received) }), {gmv:0,cost:0,profit:0,received:0}); }
 
+// Keep the ledger on the same basis as the split payment fields. The legacy
+// renderer above is retained for compatibility, then replaced here so partial
+// supplier payments never appear as a full cost payment.
+function transactionRowsWithSplit() {
+  const orderRows = dashboardOrders().flatMap(order => {
+    const rows = [];
+    if (isCommissionOrder(order)) {
+      if (commissionReceived(order)) rows.push({ date: order.commissionReceivedDate || order.orderDate || order.serviceDate, kind:'\u5e73\u53f0\u8fd4\u4f63', amount:commissionReceived(order), party:order.commissionPlatform||order.supplier, note:`\u4f63\u91d1\u5230\u8d26 \u00b7 ${order.confirmation||orderCode(order)}`, order });
+      if (directCost(order)) rows.push({ date: order.orderDate || order.serviceDate, kind:'\u76f4\u63a5\u8d39\u7528', amount:-directCost(order), party:order.supplier, note:'\u8fd4\u4f63\u8ba2\u5355\u76f4\u63a5\u8d39\u7528', order });
+    } else {
+      if (order.received) rows.push({ date: order.orderDate || order.serviceDate, kind:'\u6536\u6b3e', amount:Number(order.received), party:order.customer, note:'\u8ba2\u5355\u6536\u6b3e', order });
+      if (supplierPaid(order)) rows.push({ date: order.orderDate || order.serviceDate, kind:'\u6210\u672c\u4ed8\u6b3e', amount:-supplierPaid(order), party:order.supplier, note:'\u4f9b\u5e94\u5546\u7ed3\u7b97', order });
+    }
+    return rows;
+  });
+  const otherRows = otherIncomes.map(item => {
+    const linked = incomeOrderIds(item).map(id => orders.find(order => order.id===id)).filter(Boolean);
+    return [{ date:item.date, kind:'\u5176\u4ed6\u6536\u5165', amount:Number(item.amount||0), party:item.payer||item.name, note:linked.length?`\u5173\u8054 ${linked.map(order=>orderCode(order)).join('\u3001')}`:'\u672a\u5173\u8054\u8ba2\u5355', order:{id:item.id} }, item.expense?{ date:item.date, kind:'\u5176\u4ed6\u652f\u51fa', amount:-Number(item.expense), party:item.payee||item.name, note:'\u5176\u4ed6\u6536\u5165\u652f\u51fa', order:{id:item.id} }:null].filter(Boolean);
+  }).flat();
+  return [...orderRows,...otherRows].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+}
+transactionRows = transactionRowsWithSplit;
+
 function renderDashboard() {
   syncDashboardMonthPicker();
   const data = dashboardOrders(); const total = sums(data);
@@ -475,8 +508,8 @@ function renderDashboard() {
   byId('roomNights').textContent = hotels.reduce((n,o)=>n+roomNights(o),0);
   byId('flightOrders').textContent = flights.length; byId('flightOrderHint').textContent = `${compactCurrency(sums(flights).gmv)} GMV`;
   byId('ticketCount').textContent = flights.reduce((n,o)=>n+Number(o.tickets||0),0);
-  const outstanding = data.filter(customerReceivable); const due = outstanding.reduce((n,o)=>n+Math.max(0,o.gmv-o.received),0); const commissionDue=data.filter(isCommissionOrder).reduce((n,o)=>n+commissionOutstanding(o),0); const commissionOrders=data.filter(o=>isCommissionOrder(o)&&commissionOutstanding(o)>0).length;
-  byId('receivable').textContent = compactCurrency(due); byId('receivableHint').textContent = `${outstanding.length} 笔需跟进`; byId('commissionReceivable').textContent=compactCurrency(commissionDue); byId('commissionReceivableHint').textContent=`${commissionOrders} 笔待到账`;
+  const outstanding = data.filter(customerReceivable); const due = outstanding.reduce((n,o)=>n+Math.max(0,o.gmv-o.received),0); const payable = data.filter(supplierPayable); const payableDue=payable.reduce((n,o)=>n+Math.max(0,Number(o.cost||0)-supplierPaid(o)),0); const commissionDue=data.filter(isCommissionOrder).reduce((n,o)=>n+commissionOutstanding(o),0); const commissionOrders=data.filter(o=>isCommissionOrder(o)&&commissionOutstanding(o)>0).length;
+  byId('receivable').textContent = compactCurrency(due); byId('receivableHint').textContent = `${outstanding.length} 笔需跟进`; byId('payable').textContent=compactCurrency(payableDue); byId('payableHint').textContent=`${payable.length} 笔需跟进`; byId('commissionReceivable').textContent=compactCurrency(commissionDue); byId('commissionReceivableHint').textContent=`${commissionOrders} 笔待到账`;
   renderTrend(); renderQueue(); renderRanking(); renderBookerRanking(); renderRecentLedger(); renderPaymentPlatformDistribution();
 }
 function renderTrend() {
@@ -515,7 +548,7 @@ function renderOrders() {
   const list=filteredOrders().sort((a,b)=>((b[dateField] || b.orderDate || b.serviceDate || '')).localeCompare(a[dateField] || a.orderDate || a.serviceDate || ''));
   const pageCount=Math.ceil(list.length/ORDER_PAGE_SIZE); orderPage=Math.min(orderPage,pageCount||1);
   const pageList=list.slice((orderPage-1)*ORDER_PAGE_SIZE,orderPage*ORDER_PAGE_SIZE);
-  byId('orderTable').innerHTML=pageList.map(order=>{const isHotel=order.type==='hotel'; const invoiceState=invoiceStatus(order); return `<tr class="clickable ${payment(order)==='unpaid'?'unpaid-order':''}" data-detail="${order.id}"><td><span class="order-code">${orderCode(order)}</span><small class="order-status">${statusText(order)}</small></td><td>${dateFmt(order.orderDate || order.serviceDate)}</td><td>${dateFmt(order.serviceDate)}</td><td class="entity-cell"><strong>${order.customer}</strong><small>${order.booker||'—'}</small></td><td>${order.location||'—'}</td><td class="entity-cell"><strong>${order.supplier}</strong><small>${typeName(order)}</small></td><td class="entity-cell product-cell"><strong>${order.product||'—'}</strong>${order.confirmation?`<small class="confirmation-line">确认号：${order.confirmation}</small>`:''}</td><td>${isHotel?`${order.rooms||1} 间 × ${order.nights||0} 晚`:`${order.tickets||0} 张`}</td><td class="money">${compactCurrency(order.gmv)}</td><td class="money ${profit(order)>=0?'profit-positive':'profit-negative'}">${compactCurrency(profit(order))}</td><td><span class="status ${payment(order)}">${paymentText(order)}</span><small class="payment-platform">${order.paymentPlatform||'未填平台'}</small><small class="settlement-badge">${settlementText(order)}</small></td><td><span class="status ${invoiceState==='issued'?'paid':invoiceState==='no_invoice'?'invoice-no-invoice':'pending'}">${invoiceText(order)}</span>${invoiceState==='issued'&&order.invoiceCompany?`<small class="invoice-company">${order.invoiceCompany}</small>`:''}</td><td><button class="arrow" aria-label="查看订单">›</button></td></tr>`}).join('') || '<tr><td colspan="13"><div class="empty-state">未找到订单</div></td></tr>';
+  byId('orderTable').innerHTML=pageList.map(order=>{const isHotel=order.type==='hotel'; const invoiceState=invoiceStatus(order); return `<tr class="clickable ${paymentIssue(order)?'unpaid-order':''}" data-detail="${order.id}"><td><span class="order-code">${orderCode(order)}</span><small class="order-status">${statusText(order)}</small></td><td>${dateFmt(order.orderDate || order.serviceDate)}</td><td>${dateFmt(order.serviceDate)}</td><td class="entity-cell"><strong>${order.customer}</strong><small>${order.booker||'—'}</small></td><td>${order.location||'—'}</td><td class="entity-cell"><strong>${order.supplier}</strong><small>${typeName(order)}</small></td><td class="entity-cell product-cell"><strong>${order.product||'—'}</strong>${order.confirmation?`<small class="confirmation-line">确认号：${order.confirmation}</small>`:''}</td><td>${isHotel?`${order.rooms||1} 间 × ${order.nights||0} 晚`:`${order.tickets||0} 张`}</td><td class="money">${compactCurrency(order.gmv)}</td><td class="money ${profit(order)>=0?'profit-positive':'profit-negative'}">${compactCurrency(profit(order))}</td><td><span class="status ${payment(order)}">${paymentText(order)}</span>${isCommissionOrder(order)?`<small class="payment-platform">${commissionStatusText(order)}</small>`:`<small class="payment-platform">供应商：${supplierPaymentText(order)}</small><small class="payment-platform">${order.paymentPlatform||'未填付款方式'}</small>`}<small class="settlement-badge">${settlementText(order)}</small></td><td><span class="status ${invoiceState==='issued'?'paid':invoiceState==='no_invoice'?'invoice-no-invoice':'pending'}">${invoiceText(order)}</span>${invoiceState==='issued'&&order.invoiceCompany?`<small class="invoice-company">${order.invoiceCompany}</small>`:''}</td><td><button class="arrow" aria-label="查看订单">›</button></td></tr>`}).join('') || '<tr><td colspan="13"><div class="empty-state">未找到订单</div></td></tr>';
   byId('mobileOrderList').innerHTML=pageList.map(order=>{const isHotel=order.type==='hotel';return `<article class="mobile-order-card ${payment(order)==='unpaid'?'unpaid-order':''}" data-detail="${order.id}"><div class="mobile-order-head"><div><div class="mobile-order-code">${orderCode(order)}</div><div class="mobile-order-title">${order.supplier||'待确认'}</div><div class="mobile-order-subtitle"><span>${order.product||typeName(order)}</span>${order.confirmation?`<span class="mobile-order-confirmation">确认号：${order.confirmation}</span>`:''}<span>客户：${order.customer||'待补客户'}</span></div></div><span class="status ${payment(order)}">${paymentText(order)}</span></div><div class="mobile-order-meta"><span>下单日期<b>${dateFmt(order.orderDate||order.serviceDate)}</b></span><span>${isHotel?'入住日期':'出发日期'}<b>${dateFmt(order.serviceDate)}</b></span><span>${isHotel?'房晚':'票数'}<b>${isHotel?roomNights(order):`${order.tickets||0} 张`}</b></span></div><div class="mobile-order-money"><div><strong>${compactCurrency(order.gmv)}</strong><small>GMV · ${order.location||'—'}</small></div><div><small>${isCommissionOrder(order)?`${settlementText(order)} · 佣金 ${compactCurrency(commissionReceived(order))}`:(order.paymentPlatform||'未填付款平台')}</small><small>${invoiceText(order)}</small></div></div></article>`}).join('') || '<div class="empty-state">未找到订单</div>';
   const first= list.length ? (orderPage-1)*ORDER_PAGE_SIZE+1 : 0; const last=Math.min(orderPage*ORDER_PAGE_SIZE,list.length);
   byId('orderCountLabel').textContent=list.length?`共 ${list.length} 笔订单 · 显示 ${first}-${last}`:'共 0 笔订单';
@@ -757,6 +790,21 @@ function openOtherIncomeForm(item=null) {
 function mountWorkspacePages(){const knowledge=document.querySelector('#aiView .knowledge-panel')||document.querySelector('.knowledge-panel'),knowledgeMount=byId('knowledgePageMount');if(knowledge&&knowledgeMount&&knowledge.parentElement!==knowledgeMount){knowledgeMount.appendChild(knowledge);knowledge.classList.add('knowledge-page-panel');}const settings=document.querySelector('#aiView .ai-settings-panel')||document.querySelector('.ai-settings-panel'),settingsMount=byId('settingsPageMount');if(settings&&settingsMount&&settings.parentElement!==settingsMount){settingsMount.appendChild(settings);settings.classList.add('settings-page-panel');}}
 function showView(view){mountWorkspacePages();activeView=view;document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active',el.id===`${view}View`));document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.view===view));document.querySelectorAll('.dashboard-only').forEach(el=>el.classList.toggle('hidden',view!=='dashboard'));document.querySelectorAll('.order-toolbar-only').forEach(el=>el.classList.toggle('hidden',view==='otherIncome'||view==='ai'||view==='knowledge'||view==='settings'||view==='memory'));byId('viewTitle').textContent={dashboard:'经营总览',orders:'订单台账',ledger:'资金流水',otherIncome:'其它收入',quality:'数据待办',ai:'AI工作台',knowledge:'专业知识库',memory:'AI记忆',settings:'设置'}[view];if(view==='ai'||view==='settings')syncAiSettingsForm();if(view==='memory')renderMemoryList();}
 function openDetails(id){const o=orders.find(x=>x.id===id);if(!o)return;selectedOrderId=id;const isHotel=o.type==='hotel';const transactions=transactionRows().filter(r=>r.order.id===id);const commissionInfo=isCommissionOrder(o)?`<div><span>结算模式</span><b>${settlementText(o)}</b></div><div><span>客人支付给</span><b>${o.guestPaymentTo||'—'}</b></div><div><span>返佣平台</span><b>${o.commissionPlatform||'—'}</b></div><div><span>预计 / 已收佣金</span><b>${compactCurrency(commissionExpected(o))} / ${compactCurrency(commissionReceived(o))}</b></div><div><span>佣金状态</span><b>${commissionStatusText(o)}${o.commissionReceivedDate?` · ${o.commissionReceivedDate}`:''}</b></div>`:`<div><span>结算模式</span><b>${settlementText(o)}</b></div>`;const amountCards=isCommissionOrder(o)?`<div><span>订单金额 GMV</span><strong>${compactCurrency(o.gmv)}</strong></div><div><span>酒店成本</span><strong>无需我方支付</strong></div><div><span>订单利润</span><strong class="${profit(o)>=0?'profit-positive':'profit-negative'}">${compactCurrency(profit(o))}</strong></div><div><span>待返佣</span><strong>${compactCurrency(commissionOutstanding(o))}</strong></div>`:`<div><span>GMV</span><strong>${compactCurrency(o.gmv)}</strong></div><div><span>成本</span><strong>${compactCurrency(o.cost)}</strong></div><div><span>利润</span><strong class="${profit(o)>=0?'profit-positive':'profit-negative'}">${compactCurrency(profit(o))}</strong></div><div><span>待收款</span><strong>${compactCurrency(o.gmv-o.received)}</strong></div>`;byId('detailContent').innerHTML=`<div class="detail-header"><div><p class="eyebrow">${isHotel?'HOTEL ORDER':'FLIGHT ORDER'} · ${o.id}</p><h2>${o.supplier}</h2><span class="status ${payment(o)} detail-status">${paymentText(o)} · ${statusText(o)}</span></div><button class="icon-button" data-close="detailDialog" aria-label="关闭">×</button></div><div class="detail-info"><div><span>客户</span><b>${o.customer}</b></div><div><span>预订人</span><b>${o.booker||'—'}</b></div><div><span>下单日期</span><b>${o.orderDate||'—'}</b></div><div><span>${isHotel?'入住日期':'出发日期'}</span><b>${o.serviceDate||'—'}</b></div><div><span>${isHotel?'城市':'航线'}</span><b>${o.location||'—'}</b></div><div><span>${isHotel?'房型':'航班'}</span><b>${o.product||'—'}</b></div><div><span>确认号 / 票号</span><b>${o.confirmation||'—'}</b></div>${commissionInfo}<div><span>订单状态</span><b>${statusText(o)}</b></div><div><span>付款平台</span><b>${o.paymentPlatform||'—'}</b></div><div><span>开票状态</span><b>${invoiceText(o)}${invoiceStatus(o)==='issued'&&o.invoiceCompany?` · ${o.invoiceCompany}`:''}</b></div><div><span>${isHotel?'住宿':'票数'}</span><b>${isHotel?`${o.rooms||1} 间 × ${o.nights||0} 晚 = ${roomNights(o)} 房晚`:`${o.tickets||0} 张`}</b></div></div><div class="detail-amounts">${amountCards}</div><section class="detail-section"><h3>资金流水</h3><div class="detail-ledger">${transactions.map(r=>`<div><span>${dateFmt(r.date)}</span><span>${r.kind}</span><span>${r.note}</span><b class="amount ${r.amount>=0?'income':'expense'}">${r.amount>=0?'+':'−'}${compactCurrency(Math.abs(r.amount))}</b></div>`).join('')||'<div>暂无流水</div>'}</div></section><div class="detail-actions"><div><button class="button quiet" id="editOrder" data-id="${o.id}">编辑订单</button><button class="button quiet" id="addPayment" data-id="${o.id}">+ ${isCommissionOrder(o)?'登记返佣':'登记收款'}</button></div><div><button class="button quiet danger" id="deleteOrder" data-id="${o.id}">删除订单</button><button class="button primary" data-close="detailDialog">关闭</button></div></div>`;byId('detailDialog').showModal();}
+const openDetailsLegacy = openDetails;
+openDetails = function openSplitPaymentDetails(id){
+  openDetailsLegacy(id);
+  const order=orders.find(item=>item.id===id);
+  const content=byId('detailContent');
+  if(!order||!content)return;
+  const paymentSection=document.createElement('section');
+  paymentSection.className='detail-section detail-payment-split';
+  paymentSection.innerHTML=isCommissionOrder(order)
+    ? `<h3>\u6536\u6b3e\u4e0e\u4ed8\u6b3e</h3><div class="detail-info"><div><span>\u5ba2\u6237\u6536\u6b3e</span><b>\u4e0d\u9002\u7528\uff08\u5ba2\u4eba\u524d\u53f0\u652f\u4ed8\uff09</b></div><div><span>\u4f9b\u5e94\u5546 / \u5e73\u53f0\u4ed8\u6b3e</span><b>\u65e0\u9700\u4ed8\u6b3e</b></div><div><span>\u5e73\u53f0\u8fd4\u4f63</span><b>${commissionStatusText(order)}\uff0c\u5f85\u8fd4 ${compactCurrency(commissionOutstanding(order))}</b></div></div>`
+    : `<h3>\u6536\u6b3e\u4e0e\u4ed8\u6b3e</h3><div class="detail-info"><div><span>\u5ba2\u6237\u6536\u6b3e</span><b>${paymentText(order)}\uff0c\u5df2\u6536 ${compactCurrency(order.received)}\uff0c\u5f85\u6536 ${compactCurrency(Math.max(0,Number(order.gmv||0)-Number(order.received)))}</b></div><div><span>\u4f9b\u5e94\u5546 / \u5e73\u53f0\u4ed8\u6b3e</span><b>${supplierPaymentText(order)}\uff0c\u5df2\u4ed8 ${compactCurrency(supplierPaid(order))}\uff0c\u5f85\u4ed8 ${compactCurrency(Math.max(0,Number(order.cost||0)-supplierPaid(order)))}</b></div><div><span>\u4ed8\u6b3e\u65b9\u5f0f</span><b>${order.paymentPlatform||'\u672a\u586b\u5199'}</b></div></div>`;
+  const amounts=content.querySelector('.detail-amounts');
+  if(amounts)amounts.insertAdjacentElement('beforebegin',paymentSection);
+};
+
 async function deleteOrder(id){
   const order=orders.find(item=>item.id===id); if(!order)return;
   if(!window.confirm(`确定删除订单 ${orderCode(order)} 吗？\n\n删除后订单、统计和订单资金流水都会移除，且无法恢复。`))return;
@@ -839,6 +887,16 @@ byId('orderForm').addEventListener('submit',async event=>{
   const gmv=Number(byId('gmv').value||0); let received=Number(byId('received').value||0);
   if(paymentStatus==='paid')received=gmv; if(paymentStatus==='unpaid'||paymentStatus==='refunded')received=0;
   const commission=byId('settlementMode').value==='guest_pay_commission'; const order={id:editId||newOrderId(type),orderCode:existing?.orderCode||nextOrderCode(),type,customer:byId('customer').value.trim(),booker:byId('booker').value.trim(),orderDate:byId('orderDate').value,serviceDate:byId('serviceDate').value,location:byId('location').value.trim(),supplier:byId('supplier').value.trim(),product:byId('product').value.trim(),confirmation:byId('confirmation').value.trim(),rooms:type==='hotel'?Number(byId('rooms').value||1):0,nights:type==='hotel'?Number(byId('nights').value||0):0,tickets:type==='flight'?Number(byId('tickets').value||1):0,gmv,cost:commission?0:Number(byId('cost').value||0),received:commission?0:received,paymentStatus:commission?'unpaid':paymentStatus,paymentPlatform,settlementMode:byId('settlementMode').value,guestPaymentTo:byId('guestPaymentTo').value.trim(),commissionPlatform:byId('commissionPlatform').value.trim(),commissionExpected:commission?Number(byId('commissionExpected').value||0):0,commissionReceived:commission?Number(byId('commissionReceived').value||0):0,commissionStatus:commission?byId('commissionStatus').value:'none',directCost:commission?Number(byId('directCost').value||0):0,commissionReceivedDate:commission?byId('commissionReceivedDate').value:'',invoiceStatus:invoiceStatusValue,invoiceCompany:invoiceStatusValue==='issued'?invoiceCompany:'',profitOverride:existing?.profitOverride ?? null,status:byId('orderStatus').value,issues:existing?.issues};
+  const savedMode=byId('settlementMode').value;
+  const savedCommission=savedMode==='guest_pay_commission';
+  const savedNoFunds=savedMode==='no_funds';
+  const savedCost=savedCommission||savedNoFunds?0:Number(byId('cost').value||0);
+  const requestedSupplierStatus=byId('supplierPaymentStatus').value;
+  let savedSupplierPaid=savedCommission||savedNoFunds?0:Number(byId('supplierPaid').value||0);
+  if(requestedSupplierStatus==='paid')savedSupplierPaid=savedCost;
+  if(requestedSupplierStatus==='unpaid')savedSupplierPaid=0;
+  savedSupplierPaid=Math.max(0,Math.min(savedCost,savedSupplierPaid));
+  Object.assign(order,{cost:savedCost,received:savedCommission||savedNoFunds?0:received,paymentStatus:savedCommission||savedNoFunds?'not_applicable':paymentStatus,customerPaymentStatus:savedCommission||savedNoFunds?'not_applicable':paymentStatus,supplierPaid:savedSupplierPaid,supplierPaymentStatus:savedCommission||savedNoFunds?'not_required':requestedSupplierStatus});
   if(existing)Object.assign(existing,order);else orders.unshift(order);
   try { await saveOrder(order); saveLocalOrders(); delete byId('orderForm').dataset.editId; byId('orderDialog').close(); renderAll(); showView('orders'); openDetails(order.id); }
   catch(error) { if(existing && previous) Object.assign(existing, previous); else orders=orders.filter(item=>item.id!==order.id); saveLocalOrders(); submitButton.disabled=false; submitButton.textContent=originalSubmitText; window.alert(`保存订单失败：${error.message}`); }
@@ -925,6 +983,17 @@ document.querySelectorAll('[data-ai-example]').forEach(button=>button.addEventLi
 const renderOrdersOriginal = renderOrders;
 renderOrders = function renderOrdersWithVisibleActions(){
   renderOrdersOriginal();
+  document.querySelectorAll('#mobileOrderList article[data-detail]').forEach(card=>{
+    const order=orders.find(item=>item.id===card.dataset.detail);
+    if(!order)return;
+    card.classList.toggle('unpaid-order',paymentIssue(order));
+    const money=card.querySelector('.mobile-order-money > div:last-child');
+    if(money){
+      money.innerHTML=isCommissionOrder(order)
+        ? `<small>\u5ba2\u4eba\u524d\u53f0\u652f\u4ed8 \u00b7 \u5e73\u53f0\u8fd4\u4f63</small><small>\u8fd4\u4f63\uff1a${commissionStatusText(order)}</small><small>${invoiceText(order)}</small>`
+        : `<small>\u5ba2\u6237\uff1a${paymentText(order)}</small><small>\u4f9b\u5e94\u5546\uff1a${supplierPaymentText(order)}${order.paymentPlatform?` \u00b7 ${order.paymentPlatform}`:''}</small><small>${invoiceText(order)}</small>`;
+    }
+  });
   const actionHead=document.querySelector('#ordersView thead th:last-child');
   if(actionHead){actionHead.textContent='操作';actionHead.style.width='104px';}
   document.querySelectorAll('#orderTable tr[data-detail]').forEach(row=>{
@@ -1163,4 +1232,74 @@ document.addEventListener('click',event=>{
   event.preventDefault();
   event.stopImmediatePropagation();
   cancelAssistantPendingAction();
+},true);
+
+// Split payment form behavior: the database keeps customer receipt and supplier
+// payment as separate facts, while commission/no-funds settlements hide both.
+syncSettlementFields = function syncSplitSettlementFields(){
+  const mode=byId('settlementMode').value;
+  const commission=mode==='guest_pay_commission';
+  const noFunds=mode==='no_funds';
+  const hideSettlementFields=commission||noFunds;
+  document.querySelectorAll('.settlement-detail').forEach(el=>el.classList.toggle('hidden',!commission));
+  ['costLabel','paymentStatusLabel','paymentPlatformLabel','receivedLabel','supplierPaymentStatusLabel','supplierPaidLabel'].forEach(id=>byId(id)?.classList.toggle('hidden',hideSettlementFields));
+  if(hideSettlementFields){
+    byId('paymentStatus').value='not_applicable';
+    byId('received').value=0;
+    byId('supplierPaymentStatus').value='not_required';
+    byId('supplierPaid').value=0;
+    byId('cost').value=0;
+  }else{
+    if(byId('paymentStatus').value==='not_applicable')byId('paymentStatus').value='paid';
+    if(byId('supplierPaymentStatus').value==='not_required')byId('supplierPaymentStatus').value='unknown';
+  }
+  byId('quantityPreview').textContent=commission?'\u5ba2\u4eba\u524d\u53f0\u652f\u4ed8 \u00b7 \u5e73\u53f0\u8fd4\u4f63':byId('quantityPreview').textContent;
+  refreshFormPreview();
+};
+
+const openEditOrderSplit = openEditOrder;
+openEditOrder = function openEditOrderWithSplitFields(id){
+  openEditOrderSplit(id);
+  const order=orders.find(item=>item.id===id);
+  if(!order)return;
+  byId('paymentStatus').value=customerPaymentStatus(order);
+  byId('supplierPaymentStatus').value=supplierPaymentStatus(order);
+  byId('supplierPaid').value=supplierPaid(order);
+  syncSettlementFields();
+};
+
+document.addEventListener('click',event=>{
+  if(event.target.id!=='openOrderDialog')return;
+  byId('paymentStatus').value='paid';
+  byId('supplierPaymentStatus').value='unknown';
+  byId('supplierPaid').value=0;
+  syncSettlementFields();
+});
+
+document.addEventListener('click',event=>{
+  if(event.target.id==='applyFilters'){
+    supplierPaymentFilter=byId('supplierPaymentFilter').value;
+    orderPage=1;
+    renderOrders();
+  }
+  if(event.target.id==='clearFilters'){
+    supplierPaymentFilter='all';
+    byId('supplierPaymentFilter').value='all';
+    renderOrders();
+  }
+});
+
+// The legacy quick-payment action still writes paymentStatus. Clear the split
+// field before it runs so orderToRow safely falls back to the updated value.
+document.addEventListener('click',event=>{
+  if(event.target.id!=='addPayment')return;
+  const order=orders.find(item=>item.id===event.target.dataset.id);
+  if(order&&!isCommissionOrder(order))order.customerPaymentStatus=null;
+},true);
+
+document.addEventListener('change',event=>{
+  if(event.target.id==='excelFile'){
+    supplierPaymentFilter='all';
+    if(byId('supplierPaymentFilter'))byId('supplierPaymentFilter').value='all';
+  }
 },true);

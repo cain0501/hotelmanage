@@ -266,7 +266,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-           <small class="app-version">版本 20261020-39</small>
+           <small class="app-version">版本 20261021-40</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -305,6 +305,7 @@
             <article class="metric-card"><p>机票订单</p><strong id="flightOrders">0</strong><span id="flightOrderHint">—</span></article>
             <article class="metric-card"><p>票数</p><strong id="ticketCount">0</strong><span>已出票及待出票</span></article>
             <article class="metric-card dark"><p>待收款</p><strong id="receivable">¥0</strong><span id="receivableHint">0 笔需跟进</span></article>
+            <article class="metric-card payable-card"><p>待付款</p><strong id="payable">¥0</strong><span id="payableHint">0 笔需跟进</span></article>
             <article class="metric-card commission-card"><p>待返佣</p><strong id="commissionReceivable">¥0</strong><span id="commissionReceivableHint">0 笔待到账</span></article>
           </section>
 
@@ -349,7 +350,8 @@
               <label>结束日期<input id="dateEnd" type="date" /></label>
               <label>业务类型<select id="typeSelect"><option value="all">全部业务</option><option value="hotel">酒店</option><option value="flight">机票</option></select></label>
               <label>订单状态<select id="statusFilter"><option value="all">全部状态</option></select></label>
-              <label>收款状态<select id="paymentFilter"><option value="all">全部收款状态</option><option value="paid">已收款</option><option value="partial">部分付款</option><option value="unpaid">未付款 / 待返佣</option><option value="refunded">已退款</option></select></label>
+              <label>客户收款状态<select id="paymentFilter"><option value="all">全部客户收款</option><option value="paid">已收款</option><option value="partial">部分收款</option><option value="unpaid">未收款</option><option value="refunded">已退款</option></select></label>
+              <label>供应商 / 平台付款<select id="supplierPaymentFilter"><option value="all">全部付款状态</option><option value="paid">已付款</option><option value="partial">部分付款</option><option value="unpaid">未付款</option><option value="unknown">待核对</option><option value="not_required">无需付款</option></select></label>
               <label>开票状态<select id="invoiceFilter"><option value="all">全部开票状态</option><option value="issued">已开票</option><option value="unissued">未开票</option><option value="no_invoice">无发票</option></select></label>
               <label>城市 / 航线<input id="locationFilter" placeholder="如：广州" /></label>
               <label>酒店 / 航司<input id="supplierFilter" placeholder="如：广州瑰丽" /></label>
@@ -361,7 +363,7 @@
             <div id="importStatus" class="import-status"></div>
             <div class="table-scroll">
               <table>
-                <thead><tr><th>订单编号</th><th>下单日期</th><th>入住 / 出发日期</th><th>客户 / 预订人</th><th>城市 / 航线</th><th>酒店 / 航司</th><th>房型 / 航班</th><th>住宿 / 票数</th><th>GMV</th><th>利润</th><th>收款状态</th><th>开票状态</th><th></th></tr></thead>
+                <thead><tr><th>订单编号</th><th>下单日期</th><th>入住 / 出发日期</th><th>客户 / 预订人</th><th>城市 / 航线</th><th>酒店 / 航司</th><th>房型 / 航班</th><th>住宿 / 票数</th><th>GMV</th><th>利润</th><th>收款 / 付款</th><th>开票状态</th><th></th></tr></thead>
                 <tbody id="orderTable"></tbody>
               </table>
             </div>
@@ -515,9 +517,11 @@
           <label id="commissionStatusLabel" class="settlement-detail hidden">佣金状态<select id="commissionStatus"><option value="pending">待返佣</option><option value="partial">部分返佣</option><option value="received">已返佣</option><option value="none">无佣金</option></select></label>
           <label id="commissionReceivedDateLabel" class="settlement-detail hidden">佣金到账日期<input id="commissionReceivedDate" type="date" /></label>
           <label id="directCostLabel" class="settlement-detail hidden">直接费用<span class="amount-input"><input id="directCost" type="number" min="0" step="0.01" placeholder="如：支付手续费" /><button type="button" class="calc-trigger" data-calc-for="directCost" aria-label="计算直接费用">⌗</button></span></label>
-          <label id="paymentStatusLabel">付款状态<select id="paymentStatus"><option value="paid">已收款</option><option value="unpaid">未付款</option><option value="partial">部分付款</option><option value="refunded">已退款</option></select></label>
-          <label id="paymentPlatformLabel">付款平台<input id="paymentPlatform" list="paymentPlatformOptions" placeholder="如：携程 / 飞猪 / 供应商直付" /></label>
-          <label id="receivedLabel">已收金额<span class="amount-input"><input required id="received" type="number" min="0" step="0.01" placeholder="0.00" /><button type="button" class="calc-trigger" data-calc-for="received" aria-label="计算已收金额">⌗</button></span></label>
+          <label id="paymentStatusLabel">客户收款状态<select id="paymentStatus"><option value="paid">已收款</option><option value="unpaid">未收款</option><option value="partial">部分收款</option><option value="refunded">已退款</option><option value="not_applicable">不适用</option></select></label>
+          <label id="receivedLabel">客户已收金额<span class="amount-input"><input required id="received" type="number" min="0" step="0.01" placeholder="0.00" /><button type="button" class="calc-trigger" data-calc-for="received" aria-label="计算客户已收金额">⌗</button></span></label>
+          <label id="supplierPaymentStatusLabel">供应商 / 平台付款状态<select id="supplierPaymentStatus"><option value="unknown">待核对</option><option value="unpaid">未付款</option><option value="partial">部分付款</option><option value="paid">已付款</option><option value="not_required">无需付款</option></select></label>
+          <label id="paymentPlatformLabel">供应商 / 平台付款方式<input id="paymentPlatform" list="paymentPlatformOptions" placeholder="如：携程 / 飞猪 / 供应商直付" /></label>
+          <label id="supplierPaidLabel">供应商 / 平台已付金额<span class="amount-input"><input id="supplierPaid" type="number" min="0" step="0.01" placeholder="0.00" /><button type="button" class="calc-trigger" data-calc-for="supplierPaid" aria-label="计算已付成本金额">⌗</button></span></label>
           <label>开票状态<select id="invoiceStatus"><option value="unissued">未开票</option><option value="issued">已开票</option><option value="no_invoice">无发票</option></select></label>
           <label>开票公司<input id="invoiceCompany" placeholder="已开票时填写公司名称" /></label>
         </div>
@@ -618,6 +622,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261020-39"></script>
+    <script src="app.js?v=20261021-40"></script>
   </body>
 </html>
