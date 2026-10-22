@@ -361,6 +361,7 @@ async function loadAccessProfile(){
 function showApprovalUI(show){
   byId('approvalShell').hidden=!show;
   byId('authShell').hidden=show||Boolean(currentUser);
+  byId('registerShell').hidden=show||Boolean(currentUser)||byId('registerShell').dataset.open!=='true';
   byId('appShell').hidden=show||!currentUser;
   if(show){byId('approvalEmail').textContent=currentUser?.email||'';byId('approvalStatus').textContent=`当前状态：${featureText(currentProfile?.account_status)}`;}
 }
@@ -373,7 +374,22 @@ function applyFeatureVisibility(){
 
 function setSyncStatus(message, state='') { const element=byId('cloudStatus'); if(!element)return; element.textContent=message; element.className=state; }
 function setAuthStatus(message, state='') { const element=byId('authStatus'); if(!element)return; element.textContent=message; element.className=state ? `auth-status-${state}` : ''; }
-function showAuthenticatedUI(isAuthenticated) { byId('authShell').hidden=isAuthenticated; byId('appShell').hidden=!isAuthenticated; }
+function showAuthenticatedUI(isAuthenticated) { byId('authShell').hidden=isAuthenticated; byId('registerShell').hidden=isAuthenticated||byId('registerShell').dataset.open!=='true'; byId('appShell').hidden=!isAuthenticated; }
+function showRegisterUI(show){
+  const shell=byId('registerShell');
+  if(!shell)return;
+  shell.dataset.open=show?'true':'';
+  shell.hidden=!show||Boolean(currentUser);
+  byId('authShell').hidden=show||Boolean(currentUser);
+  if(show){
+    const loginEmail=byId('authEmail')?.value.trim();
+    if(loginEmail&&!byId('registerEmail').value)byId('registerEmail').value=loginEmail;
+    byId('registerPassword').value='';
+    byId('registerPasswordConfirm').value='';
+    byId('registerStatus').textContent='';
+    setTimeout(()=>byId('registerEmail')?.focus(),0);
+  }
+}
 async function loadCloudData({ allowMigration=true, silent=false }={}) {
   if (!currentUser || !supabaseClient) return;
   const [ordersResult, incomesResult] = await Promise.all([
@@ -467,11 +483,15 @@ async function signIn() {
 }
 async function signUp() {
   if (!supabaseClient) { setAuthStatus('Supabase 客户端未加载，请检查网络后刷新。', 'error'); return; }
-  const email=byId('authEmail').value.trim(), password=byId('authPassword').value;
-  if (!email || password.length < 6) { setAuthStatus('请先填写邮箱和至少 6 位密码。', 'error'); return; }
-  setAuthStatus('正在注册…');
+  const email=byId('registerEmail').value.trim(), password=byId('registerPassword').value, confirmation=byId('registerPasswordConfirm').value, status=byId('registerStatus'), button=byId('registerSubmit');
+  if (!email || password.length < 6) { status.textContent='请先填写邮箱和至少 6 位密码。'; status.className='auth-status auth-status-error'; return; }
+  if(password!==confirmation){ status.textContent='两次输入的密码不一致。'; status.className='auth-status auth-status-error'; return; }
+  status.textContent='正在提交注册…'; status.className='auth-status'; button.disabled=true;
   const { data, error } = await supabaseClient.auth.signUp({ email, password });
-  if (error) setAuthStatus(error.message, 'error'); else if (!data.session) setAuthStatus('注册成功，请查收邮箱并完成验证后再登录。', 'success'); else setAuthStatus('注册成功，正在进入系统…', 'success');
+  button.disabled=false;
+  if (error) { status.textContent=error.message; status.className='auth-status auth-status-error'; return; }
+  byId('authEmail').value=email; byId('authPassword').value=''; showRegisterUI(false);
+  setAuthStatus(data.session?'注册成功，正在进入系统…':'注册成功，请查收邮箱并完成验证后再登录。', 'success');
 }
 async function signOut() { if (supabaseClient) await supabaseClient.auth.signOut(); }
 const issueEntries = () => orders.flatMap(order => {
@@ -1014,7 +1034,9 @@ byId('periodSelect').addEventListener('change',()=>{if(byId('periodSelect').valu
 byId('periodMonth').addEventListener('change',()=>{if(byId('periodMonth').value)byId('periodSelect').value='custom';renderAll();});
 byId('dashboardDateField').addEventListener('change',e=>{dashboardDateField=e.target.value;renderAll();});
 byId('authForm').addEventListener('submit',event=>{event.preventDefault();signIn();});
-byId('authSignUp').addEventListener('click',()=>signUp());
+byId('authSignUp').addEventListener('click',()=>showRegisterUI(true));
+byId('registerForm').addEventListener('submit',event=>{event.preventDefault();signUp();});
+byId('authBackToLogin').addEventListener('click',()=>showRegisterUI(false));
 byId('aiSettingsForm').addEventListener('submit',event=>{event.preventDefault();saveAiSettings();});
 byId('memoryForm')?.addEventListener('submit',saveManualMemory);
 byId('aiProvider').addEventListener('change',event=>{if(event.target.value==='deepseek'){if(!byId('aiBaseUrl').value||byId('aiBaseUrl').value.includes('openai.com'))byId('aiBaseUrl').value='https://api.deepseek.com';if(!byId('aiModel').value||byId('aiModel').value==='gpt-4o-mini')byId('aiModel').value='deepseek-flash';}else if(event.target.value==='openai-compatible'&&byId('aiBaseUrl').value.includes('deepseek.com')){byId('aiBaseUrl').value='https://api.openai.com/v1';if(byId('aiModel').value==='deepseek-flash')byId('aiModel').value='gpt-4o-mini';}});
