@@ -372,3 +372,12 @@ drop trigger if exists assistant_knowledge_set_updated_at on public.assistant_kn
 create trigger assistant_knowledge_set_updated_at before update on public.assistant_knowledge for each row execute function public.set_updated_at();
 drop trigger if exists assistant_memories_set_updated_at on public.assistant_memories;
 create trigger assistant_memories_set_updated_at before update on public.assistant_memories for each row execute function public.set_updated_at();
+
+-- Multi-user accounts, approval, feature permissions, and data isolation.
+-- After applying this base schema, run these migrations in order:
+-- supabase/migrations/20261021120000_multi_user_access_control.sql
+-- supabase/migrations/20261022100000_backfill_existing_profiles.sql
+-- supabase/migrations/20261022103000_access_control_hardening.sql
+-- They create the access-control tables, enforce user_id = auth.uid() RLS
+-- on private business and AI data, and make published global knowledge shared.
+-- Never put a service_role key in the browser.

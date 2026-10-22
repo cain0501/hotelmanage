@@ -18,7 +18,7 @@ const seedOrders = [
 ];
 
 const looksLikeBrokenImport = rows => Array.isArray(rows) && rows.length >= 3 && rows.filter(row => row && row.customer === '待补客户' && row.supplier === '待确认' && Number(row.gmv) === 0).length >= 3;
-const storedOrders = JSON.parse(localStorage.getItem('qizhang-orders') || 'null');
+const storedOrders = JSON.parse(localStorage.getItem('qizhang-orders-guest') || 'null');
 const localOrders = Array.isArray(storedOrders) && !looksLikeBrokenImport(storedOrders) ? storedOrders : [];
 localOrders.forEach((order,index)=>{if(!order.orderCode)order.orderCode=`ORD-${String(index+1).padStart(5,'0')}`;});
 let orders = [];
@@ -44,7 +44,7 @@ let qualityIssueFilter = 'all';
 let qualityTypeFilter = 'all';
 let qualitySearch = '';
 let qualityStatusFilter = 'open';
-const AI_SETTINGS_STORAGE_KEY='qizhang-ai-settings-draft';
+let AI_SETTINGS_STORAGE_KEY='qizhang-ai-settings-draft-guest';
 let aiSettings = { provider:'openai-compatible', baseUrl:'https://api.openai.com/v1', model:'gpt-4o-mini', temperature:0.1, enabled:false };
 let aiDraft = null;
 let assistantPendingAction = null;
@@ -63,7 +63,7 @@ let cleanupPreviewOrders = [];
 let cleanupPreviewField = '';
 let cleanupPreviewFrom = '';
 let cleanupPreviewTo = '';
-const localOtherIncomes = JSON.parse(localStorage.getItem('qizhang-other-income') || '[]');
+const localOtherIncomes = JSON.parse(localStorage.getItem('qizhang-other-income-guest') || '[]');
 let otherIncomes = [];
 
 const byId = id => document.getElementById(id);
@@ -78,13 +78,15 @@ const SUPABASE_URL = 'https://onomizgpzhqrmiuqeikf.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_PfLkfwLJTSGCIchlm3_xiQ_LuLj_JOC';
 const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 let currentUser = null;
+const userStorageKey = base => currentUser?.id ? `${base}-${currentUser.id}` : `${base}-guest`;
+const aiSettingsStorageKey = () => userStorageKey('qizhang-ai-settings-draft');
 let realtimeChannel = null;
 let cloudReady = false;
 let cloudBusy = false;
 let qualityActions = {};
 let qualityActionsCloudAvailable = false;
-const saveLocalOrders = () => localStorage.setItem('qizhang-orders', JSON.stringify(orders));
-const saveLocalOtherIncomes = () => localStorage.setItem('qizhang-other-income', JSON.stringify(otherIncomes));
+const saveLocalOrders = () => localStorage.setItem(userStorageKey('qizhang-orders'), JSON.stringify(orders));
+const saveLocalOtherIncomes = () => localStorage.setItem(userStorageKey('qizhang-other-income'), JSON.stringify(otherIncomes));
 const qualityActionsStorageKey = () => `qizhang-quality-actions-${currentUser?.id || 'guest'}`;
 const saveLocalQualityActions = () => localStorage.setItem(qualityActionsStorageKey(), JSON.stringify(qualityActions));
 const readLocalQualityActions = () => { try { const value=JSON.parse(localStorage.getItem(qualityActionsStorageKey()) || '{}'); return value && typeof value==='object' ? value : {}; } catch { return {}; } };
@@ -333,6 +335,42 @@ function fillFromAiDraft(){
   if(data.intent==='other_income'||data.intent==='other_expense'){openOtherIncomeForm();byId('otherIncomeDate').value=aiValue(income.date)||today;byId('otherIncomeName').value=aiValue(income.name)||'一句话记账';byId('otherIncomePayer').value=aiValue(income.payer);byId('otherIncomePayee').value=aiValue(income.payee);byId('otherIncomeAmount').value=income.amount||0;byId('otherIncomeExpense').value=income.expense||0;byId('otherIncomeNet').textContent=compactCurrency(Number(income.amount||0)-Number(income.expense||0));clearAiDraftPreview();showView('otherIncome');return;}
   const search=aiValue(income.search_text)||aiValue(order.confirmation)||aiValue(order.customer);const candidate=orders.filter(item=>orderSearchText(item).includes(search.toLowerCase()));if(candidate.length===1){openDetails(candidate[0].id);window.alert(`已找到匹配订单 ${orderCode(candidate[0])}，请在详情中登记收款或返佣。`);}else{window.alert('这句话需要关联已有订单，请补充订单编号、确认号或客户姓名后再识别。');}
 }
+let currentProfile = null;
+let currentFeatures = new Set();
+let adminUsers = [];
+let selectedAdminUserId = null;
+
+const featureForView = { dashboard:'dashboard.view', orders:'orders.view', ledger:'ledger.view', otherIncome:'other_income.manage', quality:'quality.view', ai:'ai.use', knowledge:'knowledge.read', memory:'ai.use', settings:'settings.manage', admin:'users.manage' };
+const canFeature = feature => currentProfile?.role === 'admin' || (currentProfile?.account_status === 'approved' && currentFeatures.has(feature));
+const featureText = status => ({pending:'待审核', approved:'已通过', rejected:'已拒绝', suspended:'已暂停'})[status] || status || '未知';
+
+async function loadAccessProfile(){
+  if(!currentUser||!supabaseClient)return null;
+  const profileResult=await supabaseClient.from('profiles').select('user_id,email,display_name,role,account_status,approved_at,approved_by,rejected_reason,created_at,updated_at').eq('user_id',currentUser.id).maybeSingle();
+  if(profileResult.error)throw profileResult.error;
+  currentProfile=profileResult.data;
+  currentFeatures=new Set();
+  if(currentProfile?.account_status==='approved'){
+    const permissions=await supabaseClient.from('user_feature_permissions').select('feature_key').eq('user_id',currentUser.id).eq('enabled',true);
+    if(permissions.error)throw permissions.error;
+    currentFeatures=new Set((permissions.data||[]).map(item=>item.feature_key));
+  }
+  return currentProfile;
+}
+
+function showApprovalUI(show){
+  byId('approvalShell').hidden=!show;
+  byId('authShell').hidden=show||Boolean(currentUser);
+  byId('appShell').hidden=show||!currentUser;
+  if(show){byId('approvalEmail').textContent=currentUser?.email||'';byId('approvalStatus').textContent=`当前状态：${featureText(currentProfile?.account_status)}`;}
+}
+
+function applyFeatureVisibility(){
+  document.querySelectorAll('[data-view]').forEach(item=>{const feature=featureForView[item.dataset.view];item.hidden=Boolean(feature&&!canFeature(feature));});
+  document.querySelectorAll('.admin-only').forEach(item=>{item.hidden=currentProfile?.role!=='admin';});
+  byId('migrateLocalData')?.classList.toggle('hidden',!canFeature('orders.import'));
+}
+
 function setSyncStatus(message, state='') { const element=byId('cloudStatus'); if(!element)return; element.textContent=message; element.className=state; }
 function setAuthStatus(message, state='') { const element=byId('authStatus'); if(!element)return; element.textContent=message; element.className=state ? `auth-status-${state}` : ''; }
 function showAuthenticatedUI(isAuthenticated) { byId('authShell').hidden=isAuthenticated; byId('appShell').hidden=!isAuthenticated; }
@@ -350,10 +388,7 @@ async function loadCloudData({ allowMigration=true, silent=false }={}) {
   saveLocalOrders(); saveLocalOtherIncomes();
   setSyncStatus(`云端数据 · ${orders.length} 笔订单`, 'synced');
   renderAll();
-  if (allowMigration && !orders.length && !otherIncomes.length && localOrders.length) {
-    const shouldMigrate = window.confirm(`云端暂时没有数据，发现本地浏览器中有 ${localOrders.length} 笔订单。是否上传到云端？\n\n不会自动上传示例数据。`);
-    if (shouldMigrate) await migrateLocalData();
-  }
+  // 多用户模式下禁止登录后自动迁移本地数据，避免把上一个账号的数据上传到当前账号。
   if (!silent) setAuthStatus('已连接云端', 'success');
 }
 async function migrateLocalData() {
@@ -402,13 +437,25 @@ async function setupRealtime() {
 async function handleSession(session) {
   const sessionKey=session?.user?.id||'guest';if(sessionKey===lastHandledSessionKey)return;lastHandledSessionKey=sessionKey;
   currentUser = session?.user || null;
+  AI_SETTINGS_STORAGE_KEY=aiSettingsStorageKey();
   if (!currentUser) {
-    cloudReady=false; qualityActions={}; qualityActionsCloudAvailable=false; orders=[]; otherIncomes=[]; assistantMemories=[]; assistantMemoryDraft=null; showAuthenticatedUI(false); setAuthStatus('');
+    currentProfile=null; currentFeatures=new Set(); cloudReady=false; qualityActions={}; qualityActionsCloudAvailable=false; orders=[]; otherIncomes=[]; assistantMemories=[]; assistantMemoryDraft=null; showApprovalUI(false); showAuthenticatedUI(false); setAuthStatus(''); AI_SETTINGS_STORAGE_KEY='qizhang-ai-settings-draft-guest';
     if (realtimeChannel && supabaseClient) { await supabaseClient.removeChannel(realtimeChannel); realtimeChannel=null; }
     return;
   }
-  showAuthenticatedUI(true); byId('currentUserEmail').textContent=currentUser.email || ''; setSyncStatus('正在读取云端数据…', 'syncing');
-  try { await loadCloudData(); await loadQualityActions(); await setupRealtime(); await loadAiSettings(); await loadAssistantWorkspace(); } catch (error) { cloudReady=false; setSyncStatus(`云端连接失败：${error.message}`, 'sync-error'); window.alert(`云端数据库还未准备好或连接失败：${error.message}\n\n请先在 Supabase SQL Editor 执行项目里的 supabase-schema.sql。`); renderAll(); }
+  showAuthenticatedUI(true); byId('currentUserEmail').textContent=currentUser.email || ''; setSyncStatus('正在检查账户权限…', 'syncing');
+  try {
+    await loadAccessProfile();
+    applyFeatureVisibility();
+    if(currentProfile?.account_status!=='approved'){
+      showApprovalUI(true);
+      return;
+    }
+    showApprovalUI(false); setSyncStatus('正在读取云端数据…', 'syncing');
+    await loadCloudData({allowMigration:false}); await loadQualityActions(); await setupRealtime(); await loadAiSettings(); await loadAssistantWorkspace();
+    applyFeatureVisibility();
+    if(!canFeature('dashboard.view')){const fallback=Object.entries(featureForView).find(([view,feature])=>view!=='admin'&&canFeature(feature));if(fallback)showView(fallback[0]);}
+  } catch (error) { cloudReady=false; setSyncStatus(`云端连接失败：${error.message}`, 'sync-error'); window.alert(`云端数据库还未准备好或连接失败：${error.message}\n\n请先完成最新的多用户权限迁移。`); renderAll(); }
 }
 async function signIn() {
   if (!supabaseClient) { setAuthStatus('Supabase 客户端未加载，请检查网络后刷新。', 'error'); return; }
@@ -1276,6 +1323,23 @@ document.addEventListener('click',event=>{
   syncSettlementFields();
 });
 
+migrateLocalData = async function migrateScopedLocalData(){
+  if(!currentUser||!supabaseClient||!canFeature('orders.import')){window.alert('当前账号没有导入数据权限');return;}
+  const parse=(key,fallback)=>{try{const value=JSON.parse(localStorage.getItem(key)||'null');return Array.isArray(value)?value:fallback;}catch{return fallback;}};
+  const scopedOrders=parse(userStorageKey('qizhang-orders'),[]), legacyOrders=parse('qizhang-orders',[]);
+  const scopedIncomes=parse(userStorageKey('qizhang-other-income'),[]), legacyIncomes=parse('qizhang-other-income',[]);
+  const importOrders=scopedOrders.length?scopedOrders:legacyOrders, importIncomes=scopedIncomes.length?scopedIncomes:legacyIncomes;
+  if(!importOrders.length&&!importIncomes.length){window.alert('当前浏览器没有可上传的本地数据');return;}
+  if(!window.confirm(`确认把本地数据上传到当前账号 ${currentUser.email} 吗？\n\n订单：${importOrders.length} 笔\n其它收入：${importIncomes.length} 笔\n\n请确认当前登录账号正确。`))return;
+  cloudBusy=true;setSyncStatus('正在上传当前账号的本地数据…','syncing');
+  try{
+    if(importOrders.length){orders=importOrders.map(order=>({...order}));const {error}=await supabaseClient.from('orders').upsert(orders.map(orderToRow),{onConflict:'user_id,id'});if(error)throw error;}
+    if(importIncomes.length){otherIncomes=importIncomes.map(item=>({...item}));const {error}=await supabaseClient.from('other_income').upsert(otherIncomes.map(otherIncomeToRow),{onConflict:'user_id,id'});if(error)throw error;}
+    await loadCloudData({allowMigration:false});window.alert('本地数据已上传到当前账号。');
+  }catch(error){setSyncStatus(`上传失败：${error.message}`,'sync-error');window.alert(`上传失败：${error.message}`);}
+  finally{cloudBusy=false;}
+};
+
 document.addEventListener('click',event=>{
   if(event.target.id==='applyFilters'){
     supplierPaymentFilter=byId('supplierPaymentFilter').value;
@@ -1303,3 +1367,86 @@ document.addEventListener('change',event=>{
     if(byId('supplierPaymentFilter'))byId('supplierPaymentFilter').value='all';
   }
 },true);
+
+function adminStatusClass(status){return ['approved','rejected','suspended','pending'].includes(status)?status:'pending';}
+function renderAdminUsers(){
+  const table=byId('adminUserTable');if(!table)return;
+  table.innerHTML=adminUsers.map(user=>`<tr><td><strong>${escapeHtml(user.email||user.user_id)}</strong><small>${escapeHtml(user.display_name||'')}</small></td><td>${user.role==='admin'?'管理员':'普通用户'}</td><td><span class="admin-user-status ${adminStatusClass(user.account_status)}">${featureText(user.account_status)}</span></td><td>${escapeHtml(String(user.created_at||'').slice(0,16).replace('T',' '))}</td><td class="row-actions">${user.role!=='admin'&&user.account_status==='pending'?`<button class="button quiet" data-admin-status="approved" data-admin-user="${user.user_id}">通过</button><button class="button quiet danger" data-admin-status="rejected" data-admin-user="${user.user_id}">拒绝</button>`:''}${user.role!=='admin'&&user.account_status==='approved'?`<button class="button quiet danger" data-admin-status="suspended" data-admin-user="${user.user_id}">暂停</button>`:''}${user.role!=='admin'&&user.account_status!=='approved'?`<button class="button quiet" data-admin-status="approved" data-admin-user="${user.user_id}">通过</button>`:''}${user.role!=='admin'?`<button class="button quiet" data-admin-permissions="${user.user_id}">权限</button>`:''}</td></tr>`).join('')||'<tr><td colspan="5"><div class="empty-state">暂无注册用户</div></td></tr>';
+}
+async function loadAdminUsers(){
+  if(currentProfile?.role!=='admin'||!supabaseClient)return;
+  const status=byId('adminStatus');if(status)status.textContent='正在读取用户列表…';
+  const {data,error}=await supabaseClient.from('profiles').select('user_id,email,display_name,role,account_status,approved_at,created_at,updated_at').order('created_at',{ascending:false});
+  if(error){if(status){status.textContent=error.message;status.className='ai-status error';}return;}
+  adminUsers=data||[];renderAdminUsers();if(status){status.textContent=`共 ${adminUsers.length} 个账号`;status.className='ai-status success';}
+}
+async function openAdminPermissions(userId){
+  const user=adminUsers.find(item=>item.user_id===userId);if(!user)return;
+  selectedAdminUserId=userId;byId('adminPermissionPanel').hidden=false;byId('adminPermissionTitle').textContent=`功能权限 · ${user.email}`;
+  const [featuresResult,permissionsResult]=await Promise.all([supabaseClient.from('feature_catalog').select('feature_key,label,description,sort_order').order('sort_order'),supabaseClient.from('user_feature_permissions').select('feature_key,enabled').eq('user_id',userId)]);
+  if(featuresResult.error||permissionsResult.error){byId('adminPermissionStatus').textContent=featuresResult.error?.message||permissionsResult.error?.message;return;}
+  const enabled=new Set((permissionsResult.data||[]).filter(item=>item.enabled).map(item=>item.feature_key));
+  byId('adminPermissionList').innerHTML=(featuresResult.data||[]).map(feature=>`<label class="admin-permission-item"><input type="checkbox" data-admin-feature="${escapeHtml(feature.feature_key)}" ${enabled.has(feature.feature_key)?'checked':''}><span><strong>${escapeHtml(feature.label)}</strong><small>${escapeHtml(feature.description||feature.feature_key)}</small></span></label>`).join('');
+  byId('adminPermissionStatus').textContent='勾选后保存，权限会立即影响后端请求。';
+}
+async function saveAdminPermissions(){
+  if(!selectedAdminUserId||currentProfile?.role!=='admin')return;
+  const button=byId('saveAdminPermissions');button.disabled=true;
+  const rows=[...document.querySelectorAll('[data-admin-feature]')].map(input=>({user_id:selectedAdminUserId,feature_key:input.dataset.adminFeature,enabled:input.checked,granted_by:currentUser.id}));
+  const {error}=await supabaseClient.from('user_feature_permissions').upsert(rows,{onConflict:'user_id,feature_key'});
+  if(error)byId('adminPermissionStatus').textContent=error.message;else byId('adminPermissionStatus').textContent='权限已保存';
+  button.disabled=false;
+}
+async function updateAdminUserStatus(userId,nextStatus){
+  if(currentProfile?.role!=='admin')return;
+  const user=adminUsers.find(item=>item.user_id===userId);if(!user)return;
+  if(nextStatus==='rejected'&&!window.confirm(`确定拒绝 ${user.email} 的注册申请吗？`))return;
+  const patch={account_status:nextStatus,approved_at:nextStatus==='approved'?new Date().toISOString():null,approved_by:nextStatus==='approved'?currentUser.id:null,rejected_reason:nextStatus==='rejected'?'管理员拒绝':' '};
+  const {error}=await supabaseClient.from('profiles').update(patch).eq('user_id',userId);
+  if(error){byId('adminStatus').textContent=error.message;byId('adminStatus').className='ai-status error';return;}
+  await supabaseClient.from('admin_audit_logs').insert({actor_user_id:currentUser.id,target_user_id:userId,action:`account_${nextStatus}`,details:{status:nextStatus}});
+  await loadAdminUsers();
+}
+
+const showViewWithAccess=showView;
+showView=function showViewWithFeatureAccess(view){
+  const feature=featureForView[view];
+  if(feature&&!canFeature(feature)){window.alert('当前账号没有使用此功能的权限');return;}
+  showViewWithAccess(view);
+  document.querySelectorAll('.order-toolbar-only').forEach(element=>element.classList.toggle('hidden',view==='otherIncome'||view==='ai'||view==='knowledge'||view==='settings'||view==='memory'||view==='admin'));
+  if(view==='admin')byId('viewTitle').textContent='用户管理';
+  if(view==='admin')loadAdminUsers();
+};
+applyFeatureVisibility=function applyFeatureVisibilityWithActions(){
+  document.querySelectorAll('[data-view]').forEach(item=>{const feature=featureForView[item.dataset.view];item.hidden=Boolean(feature&&!canFeature(feature));});
+  document.querySelectorAll('.admin-only').forEach(item=>{item.hidden=currentProfile?.role!=='admin';});
+  const actionMap={openOrderDialog:'orders.edit',importExcel:'orders.import',openOtherIncomeDialog:'other_income.manage',aiParseButton:'ai.use',aiFillButton:'ai.use',knowledgeForm:'knowledge.submit',scanDataQuality:'quality.view'};
+  Object.entries(actionMap).forEach(([id,feature])=>{const element=byId(id);if(element)element.hidden=!canFeature(feature);});
+  if(byId('knowledgeForm'))byId('knowledgeForm').hidden=!canFeature('knowledge.submit');
+};
+applyFeatureVisibility();
+
+const renderKnowledgeListLegacy=renderKnowledgeList;
+renderKnowledgeList=function renderKnowledgeListWithSharedAccess(){
+  renderKnowledgeListLegacy();
+  if(currentProfile?.role!=='admin')document.querySelectorAll('#knowledgeList [data-knowledge-action="publish"],#knowledgeList [data-knowledge-action="archive"]').forEach(button=>button.remove());
+};
+updateKnowledgeStatus=async function updateKnowledgeStatusWithAdminAccess(id,statusValue){
+  if(!currentUser||!supabaseClient)return;
+  const payload={status:statusValue,reviewed_at:statusValue==='published'?new Date().toISOString():null,scope:statusValue==='published'?'global':'personal'};
+  let request=supabaseClient.from('assistant_knowledge').update(payload).eq('id',id);
+  if(currentProfile?.role!=='admin')request=request.eq('user_id',currentUser.id);
+  const {error}=await request;
+  if(error){window.alert(`知识状态更新失败：${error.message}`);return;}
+  await loadAssistantWorkspace();
+};
+
+document.addEventListener('click',event=>{
+  const statusButton=event.target.closest('[data-admin-status]');if(statusButton){updateAdminUserStatus(statusButton.dataset.adminUser,statusButton.dataset.adminStatus);return;}
+  const permissionButton=event.target.closest('[data-admin-permissions]');if(permissionButton){openAdminPermissions(permissionButton.dataset.adminPermissions);return;}
+  if(event.target.id==='refreshAdminUsers')loadAdminUsers();
+  if(event.target.id==='closeAdminPermission'){byId('adminPermissionPanel').hidden=true;selectedAdminUserId=null;}
+  if(event.target.id==='saveAdminPermissions')saveAdminPermissions();
+  if(event.target.id==='approvalSignOut')signOut();
+  if(event.target.id==='approvalRefresh'){lastHandledSessionKey=null;handleSession({user:currentUser});}
+});

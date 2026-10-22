@@ -824,6 +824,17 @@ Deno.serve(async (request) => {
   const adminClient = serviceRoleKey ? createClient(supabaseUrl, serviceRoleKey) : null;
   let runId: string | null = null;
   const { data: { user }, error: userError } = await userClient.auth.getUser();
+  const { data: profile, error: profileError } = await userClient
+    .from('profiles')
+    .select('role,account_status')
+    .eq('user_id', user?.id || '')
+    .maybeSingle();
+  if (profileError) return json({ error: '\u8d26\u6237\u6743\u9650\u6570\u636e\u6682\u672a\u53ef\u7528' }, 503);
+  if (userError || !user) return json({ error: '\u767b\u5f55\u5df2\u8fc7\u671f\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55' }, 401);
+  if (!profile || profile.account_status !== 'approved') return json({ error: '\u8bf7\u5148\u7b49\u5f85\u7ba1\u7406\u5458\u5ba1\u6838\u901a\u8fc7' }, 403);
+  const { data: hasAiFeature, error: featureError } = await userClient.rpc('has_feature', { required_feature: 'ai.use' });
+  if (featureError) return json({ error: 'AI feature permission unavailable' }, 503);
+  if (!hasAiFeature) return json({ error: '\u5f53\u524d\u8d26\u6237\u672a\u88ab\u5206\u914d AI \u5de5\u4f5c\u53f0\u6743\u9650' }, 403);
   if (userError || !user) return json({ error: '登录已过期，请重新登录' }, 401);
 
   try {

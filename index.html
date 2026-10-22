@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261019-26" />
+    <link rel="stylesheet" href="styles.css?v=20261022-42" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -125,7 +125,7 @@
       .mobile-order-meta{padding:9px 0;border-top:1px solid #f0ebe1;border-bottom:1px solid #f0ebe1;color:#6f6b64;font-size:11px}
       .mobile-order-meta span{min-width:0;overflow-wrap:anywhere}.mobile-order-meta b{display:block;color:#143b36;font-weight:500;margin-top:3px}
       .mobile-order-money{padding-top:10px}.mobile-order-money strong{font:600 15px "DM Mono",monospace}.mobile-order-money small{display:block;color:#8c867d;font-size:10px;margin-top:3px}
-      .auth-shell{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 15% 10%,#e8dfce 0,#f5f1e8 42%,#e9eee7 100%)}
+      .auth-shell,.approval-shell{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 15% 10%,#e8dfce 0,#f5f1e8 42%,#e9eee7 100%)}
       .auth-card{width:min(440px,100%);padding:34px;background:#fffdf8;border:1px solid #ded7c7;border-radius:10px;box-shadow:0 24px 70px rgba(20,59,54,.12)}
       .auth-card h1{margin:0;color:#143b36;font:700 29px "Noto Serif SC",serif}.auth-lead{color:#77766f;font-size:13px;line-height:1.7;margin:12px 0 23px}.auth-card form{display:grid;gap:14px}.auth-card label{display:grid;gap:6px;color:#716d65;font-size:12px}.auth-card input{width:100%}.auth-card #authSubmit{width:100%;margin-top:4px}.auth-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:15px}.auth-actions .text-button{padding:0}.auth-note{color:#989187;font-size:11px;line-height:1.6;margin:16px 0 0}.auth-status-error{color:#a84d3e!important}.auth-status-success{color:#267255!important}.sidebar-action{display:block;color:#d6e0db;text-align:left;margin-top:10px;padding:0;font-size:11px}.sidebar-action:hover{color:#fff}.sidebar-note #currentUserEmail{display:block;margin-top:4px;overflow-wrap:anywhere;color:#afc0b9}.app-version{display:block;margin-top:10px;color:#78948a;font:10px "DM Mono",monospace;letter-spacing:.04em}.syncing{color:#d6aa63!important}.synced{color:#8ec9aa!important}.sync-error{color:#f0a698!important}.row-actions{white-space:nowrap}.row-actions .button{padding:5px 8px;font-size:11px;margin-left:3px}.row-actions .danger,.detail-actions .danger{color:#a84d3e}
       .button:disabled{opacity:.55;cursor:wait;transform:none!important}
@@ -225,6 +225,9 @@
         .ai-textarea{height:108px;min-height:108px}
       }
     </style>
+    <style>
+      .admin-permission-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:14px}.admin-permission-item{display:flex;align-items:flex-start;gap:9px;padding:12px;border:1px solid #e4ded2;border-radius:8px;background:#fffdf8}.admin-permission-item input{margin-top:3px}.admin-permission-item strong{display:block;color:#244f47;font-size:12px}.admin-permission-item small{display:block;color:#8c867d;font-size:10px;line-height:1.45;margin-top:3px}.admin-user-status{display:inline-flex;padding:3px 8px;border-radius:999px;background:#f3eee5;color:#6d5b42;font-size:10px}.admin-user-status.approved{background:#e6f2e9;color:#267255}.admin-user-status.rejected,.admin-user-status.suspended{background:#f8e7e3;color:#a84d3e}.admin-user-status.pending{background:#fff1d9;color:#9b6b22}.admin-toolbar{margin-bottom:15px}
+    </style>
 </head>
   <body>
     <section class="auth-shell" id="authShell">
@@ -239,6 +242,18 @@
         </form>
         <div class="auth-actions"><button class="text-button" id="authSignUp" type="button">没有账号？注册</button><span id="authStatus" role="status"></span></div>
         <p class="auth-note">首次使用：先在这里注册，若项目开启邮箱验证，请先点击邮件中的确认链接。</p>
+      </div>
+    </section>
+
+    <section class="approval-shell" id="approvalShell" hidden>
+      <div class="auth-card">
+        <p class="eyebrow">ACCOUNT REVIEW</p>
+        <h1>等待管理员审核</h1>
+        <p class="auth-lead">你的账号已经注册成功，但暂时还不能访问业务数据。管理员审核通过后即可使用被分配的功能。</p>
+        <p id="approvalEmail" class="auth-note"></p>
+        <p id="approvalStatus" class="auth-status-pending">当前状态：等待审核</p>
+        <button class="button quiet" id="approvalRefresh" type="button">刷新审核状态</button>
+        <button class="text-button" id="approvalSignOut" type="button">退出登录</button>
       </div>
     </section>
 
@@ -258,15 +273,16 @@
           <button class="nav-item" data-view="knowledge"><span>✦</span>专业知识库</button>
           <button class="nav-item" data-view="memory"><span>◎</span>AI 记忆</button>
         </nav>
-        <div class="sidebar-bottom-nav">
-          <button class="nav-item" data-view="settings"><span>⚙</span>设置</button>
-        </div>
+         <div class="sidebar-bottom-nav">
+           <button class="nav-item" data-view="settings"><span>⚙</span>设置</button>
+           <button class="nav-item admin-only" data-view="admin" hidden><span>◎</span>用户管理</button>
+         </div>
         <div class="sidebar-note">
           <span class="pulse"></span>
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-           <small class="app-version">版本 20261021-40</small>
+           <small class="app-version">版本 20261022-42</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -458,12 +474,19 @@
            <div id="knowledgePageMount" class="knowledge-page-mount"></div>
          </section>
 
-         <section class="view settings-view" id="settingsView">
+          <section class="view settings-view" id="settingsView">
            <div class="section-heading"><div><p class="eyebrow">WORKSPACE SETTINGS</p><h2>设置</h2><p>配置 AI 模型接口和工作台行为。API Key 只保存在 Supabase Edge Function，不会写入浏览器。</p></div><span class="knowledge-page-mark">⚙</span></div>
            <div id="settingsPageMount" class="settings-page-mount"></div>
-         </section>
+          </section>
 
-         <section class="view memory-view" id="memoryView">
+          <section class="view admin-view" id="adminView">
+            <div class="section-heading"><div><p class="eyebrow">ACCESS CONTROL</p><h2>用户管理</h2><p>审核用户并分配功能权限。管理员默认不读取用户的业务数据。</p></div><span class="knowledge-page-mark">◎</span></div>
+            <section class="panel admin-toolbar"><div class="panel-head"><div><p class="eyebrow">ACCOUNT REVIEW</p><h2>账号审核</h2></div><button class="button quiet" id="refreshAdminUsers" type="button">刷新</button></div><p id="adminStatus" class="ai-status">仅管理员可见。</p></section>
+            <section class="panel"><div class="table-panel panel"><div class="table-scroll"><table><thead><tr><th>邮箱</th><th>角色</th><th>状态</th><th>注册时间</th><th>操作</th></tr></thead><tbody id="adminUserTable"></tbody></table></div></div></section>
+            <section class="panel admin-permission-panel" id="adminPermissionPanel" hidden><div class="panel-head"><div><p class="eyebrow">FEATURE ACCESS</p><h2 id="adminPermissionTitle">功能权限</h2></div><button class="button quiet" id="closeAdminPermission" type="button">关闭</button></div><div id="adminPermissionList" class="admin-permission-list"></div><div class="ai-entry-actions"><span id="adminPermissionStatus" class="ai-status"></span><button class="button primary" id="saveAdminPermissions" type="button">保存权限</button></div></section>
+          </section>
+
+          <section class="view memory-view" id="memoryView">
            <div class="section-heading"><div><p class="eyebrow">AI MEMORY</p><h2>AI 记忆</h2><p>只保存你明确确认过的业务规则和个人偏好；普通聊天不会自动写入长期记忆。</p></div><span class="knowledge-page-mark">◎</span></div>
            <div class="memory-layout">
              <section class="panel memory-summary-panel"><div class="panel-head"><div><p class="eyebrow">CONVERSATION SUMMARY</p><h2>当前对话摘要</h2></div></div><div id="assistantConversationSummary" class="memory-summary">当前还没有生成摘要。长对话达到一定长度后，系统会自动整理。</div></section>
@@ -622,6 +645,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261021-40"></script>
+    <script src="app.js?v=20261022-42"></script>
   </body>
 </html>

@@ -4,9 +4,70 @@
 >
 > 更新时间：2026-10-19
 >
-> 当前线上版本：`20261021-40`
+> 当前线上版本：`20261021-41`
 >
 > 规划原则：先把 AI 工作流、真实数据口径和上下文记忆做好；道旅 MCP 只保留兼容接口，最后再决定是否接入。
+
+## 0. 多用户账户、权限与数据隔离（2026-10-21）
+
+### 目标
+
+- 将 `zzljb520@hotmail.com` 初始化为唯一管理员。
+- 新注册用户默认进入 `pending`，必须由管理员审核后才能使用业务功能。
+- 订单、其它收入、资金流水、AI 对话、AI 记忆、模型配置和待确认任务全部按用户隔离。
+- 专业知识库采用“草稿私有、已发布公共”的共享规则。
+- 管理员可以逐项分配用户可使用的功能，但不默认获得所有用户的业务数据查看权。
+
+### 安全原则
+
+- 数据权限以 Supabase RLS 为最终边界，前端隐藏菜单不作为安全措施。
+- Edge Function 从登录 Token 获取当前用户，不信任客户端提交的 `user_id`。
+- `service_role` 只用于受控的管理员操作和服务端审计，不暴露给浏览器。
+- 公共知识只允许审核通过的用户读取；用户提交内容先进入私有草稿，管理员发布后才共享。
+- 本地缓存必须按用户 ID 命名空间，切换账号时不得复用上一个账号的本地数据。
+
+### 数据模型
+
+```text
+profiles
+- user_id / email / role
+- account_status
+- approved_at / approved_by / rejected_reason
+
+feature_catalog
+- feature_key / label / default_enabled
+
+user_feature_permissions
+- user_id / feature_key / enabled / granted_by
+
+admin_audit_logs
+- actor_user_id / target_user_id / action / details / created_at
+```
+
+业务表继续使用 `user_id = auth.uid()` 隔离；`assistant_knowledge` 增加公共 `global` 作用域，只有 `published + global` 的知识对所有已审核用户可见。
+
+### 功能权限
+
+首批权限包括：`dashboard.view`、`orders.view`、`orders.edit`、`orders.delete`、`orders.import`、`orders.export`、`ledger.view`、`other_income.manage`、`quality.view`、`ai.use`、`knowledge.read`、`knowledge.submit`、`knowledge.publish`、`settings.manage`、`users.manage`、`permissions.manage`。
+
+### 实施阶段
+
+1. 建立账户状态、角色、功能权限、审计日志和安全函数，补齐所有业务表 RLS。
+2. 新注册用户进入待审核状态，增加审核中页面和管理员审核流程。
+3. 增加管理员用户管理页面，支持通过、拒绝、暂停和分配功能。
+4. 前端菜单、页面按钮、保存操作和 Realtime 订阅按权限与当前用户过滤。
+5. 将公共知识库改为“用户草稿、管理员发布、全员读取”；AI 查询和工具执行增加权限检查。
+6. 将 `localStorage` 改为用户命名空间，禁止登录时自动把旧浏览器数据上传到新账号。
+7. 使用两个普通测试账号和一个管理员账号进行隔离、越权、审核、撤权和知识共享验收后再部署。
+
+### 验收标准
+
+- 用户 A 无法通过网页或 Supabase API 读取、修改、删除用户 B 的订单和其它收入。
+- 未审核用户可以登录但不能读取业务数据、使用 AI 或写入记录。
+- 管理员可以审核用户并分配权限，撤销权限后后端请求立即失败。
+- 公共已发布知识可被所有已审核用户读取，未发布草稿不可被其他用户看到。
+- AI 对话、记忆、模型配置和待确认任务不会跨用户出现。
+- 同一浏览器切换账号不会串用本地订单、收入或 AI 配置。
 
 ## 1. 产品定位
 
