@@ -78,6 +78,7 @@ const SUPABASE_URL = 'https://onomizgpzhqrmiuqeikf.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_PfLkfwLJTSGCIchlm3_xiQ_LuLj_JOC';
 const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 let currentUser = null;
+let accountStatusTimer = null;
 const userStorageKey = base => currentUser?.id ? `${base}-${currentUser.id}` : `${base}-guest`;
 const aiSettingsStorageKey = () => userStorageKey('qizhang-ai-settings-draft');
 let realtimeChannel = null;
@@ -357,11 +358,30 @@ async function loadAccessProfile(){
   }
   return currentProfile;
 }
+async function checkCurrentAccountStatus(){
+  if(!currentUser||!supabaseClient)return;
+  try{
+    const profile=await loadAccessProfile();
+    if(profile?.account_status!=='approved'){
+      if(accountStatusTimer){clearInterval(accountStatusTimer);accountStatusTimer=null;}
+      window.alert('当前账号已被暂停或取消审核，请联系管理员。');
+      await supabaseClient.auth.signOut();
+      return;
+    }
+    applyFeatureVisibility();
+  }catch(error){console.warn('Account status check failed',error.message);}
+}
+function startAccountStatusMonitor(){
+  if(accountStatusTimer)clearInterval(accountStatusTimer);
+  accountStatusTimer=setInterval(checkCurrentAccountStatus,60000);
+}
 
 function showApprovalUI(show){
   byId('approvalShell').hidden=!show;
   byId('authShell').hidden=show||Boolean(currentUser);
   byId('registerShell').hidden=show||Boolean(currentUser)||byId('registerShell').dataset.open!=='true';
+  byId('resetShell').hidden=show||Boolean(currentUser);
+  byId('recoveryShell').hidden=show||Boolean(currentUser);
   byId('appShell').hidden=show||!currentUser;
   if(show){byId('approvalEmail').textContent=currentUser?.email||'';byId('approvalStatus').textContent=`当前状态：${featureText(currentProfile?.account_status)}`;}
 }
@@ -374,13 +394,15 @@ function applyFeatureVisibility(){
 
 function setSyncStatus(message, state='') { const element=byId('cloudStatus'); if(!element)return; element.textContent=message; element.className=state; }
 function setAuthStatus(message, state='') { const element=byId('authStatus'); if(!element)return; element.textContent=message; element.className=state ? `auth-status-${state}` : ''; }
-function showAuthenticatedUI(isAuthenticated) { byId('authShell').hidden=isAuthenticated; byId('registerShell').hidden=isAuthenticated||byId('registerShell').dataset.open!=='true'; byId('appShell').hidden=!isAuthenticated; }
+function showAuthenticatedUI(isAuthenticated) { byId('authShell').hidden=isAuthenticated; byId('registerShell').hidden=isAuthenticated||byId('registerShell').dataset.open!=='true'; byId('resetShell').hidden=isAuthenticated; byId('recoveryShell').hidden=isAuthenticated; byId('appShell').hidden=!isAuthenticated; }
 function showRegisterUI(show){
   const shell=byId('registerShell');
   if(!shell)return;
   shell.dataset.open=show?'true':'';
   shell.hidden=!show||Boolean(currentUser);
   byId('authShell').hidden=show||Boolean(currentUser);
+  byId('resetShell').hidden=show||Boolean(currentUser);
+  byId('recoveryShell').hidden=show||Boolean(currentUser);
   if(show){
     const loginEmail=byId('authEmail')?.value.trim();
     if(loginEmail&&!byId('registerEmail').value)byId('registerEmail').value=loginEmail;
@@ -388,6 +410,29 @@ function showRegisterUI(show){
     byId('registerPasswordConfirm').value='';
     byId('registerStatus').textContent='';
     setTimeout(()=>byId('registerEmail')?.focus(),0);
+  }
+}
+function showResetUI(show){
+  byId('resetShell').hidden=!show||Boolean(currentUser);
+  byId('authShell').hidden=show||Boolean(currentUser);
+  byId('registerShell').hidden=show||Boolean(currentUser);
+  byId('recoveryShell').hidden=true;
+  if(show){
+    byId('resetEmail').value=byId('authEmail')?.value.trim()||'';
+    byId('resetStatus').textContent='';
+    setTimeout(()=>byId('resetEmail')?.focus(),0);
+  }
+}
+function showPasswordRecoveryUI(show){
+  byId('authShell').hidden=show||Boolean(currentUser);
+  byId('registerShell').hidden=show||Boolean(currentUser);
+  byId('resetShell').hidden=show||Boolean(currentUser);
+  byId('recoveryShell').hidden=!show;
+  if(show){
+    byId('recoveryPassword').value='';
+    byId('recoveryPasswordConfirm').value='';
+    byId('recoveryStatus').textContent='';
+    setTimeout(()=>byId('recoveryPassword')?.focus(),0);
   }
 }
 async function loadCloudData({ allowMigration=true, silent=false }={}) {
@@ -450,11 +495,17 @@ async function setupRealtime() {
     .on('postgres_changes', { event:'*', schema:'public', table:'other_income', filter:`user_id=eq.${currentUser.id}` }, payload => applyRealtimeIncomeChange(payload))
     .subscribe();
 }
-async function handleSession(session) {
+async function handleSession(session, authEvent='') {
+  if(authEvent==='PASSWORD_RECOVERY'){
+    currentUser=session?.user||null;
+    showAuthenticatedUI(false);showApprovalUI(false);showPasswordRecoveryUI(true);
+    return;
+  }
   const sessionKey=session?.user?.id||'guest';if(sessionKey===lastHandledSessionKey)return;lastHandledSessionKey=sessionKey;
   currentUser = session?.user || null;
   AI_SETTINGS_STORAGE_KEY=aiSettingsStorageKey();
   if (!currentUser) {
+    if(accountStatusTimer){clearInterval(accountStatusTimer);accountStatusTimer=null;}
     currentProfile=null; currentFeatures=new Set(); cloudReady=false; qualityActions={}; qualityActionsCloudAvailable=false; orders=[]; otherIncomes=[]; assistantMemories=[]; assistantMemoryDraft=null; showApprovalUI(false); showAuthenticatedUI(false); setAuthStatus(''); AI_SETTINGS_STORAGE_KEY='qizhang-ai-settings-draft-guest';
     if (realtimeChannel && supabaseClient) { await supabaseClient.removeChannel(realtimeChannel); realtimeChannel=null; }
     return;
@@ -469,6 +520,7 @@ async function handleSession(session) {
     }
     showApprovalUI(false); setSyncStatus('正在读取云端数据…', 'syncing');
     await loadCloudData({allowMigration:false}); await loadQualityActions(); await setupRealtime(); await loadAiSettings(); await loadAssistantWorkspace();
+    startAccountStatusMonitor();
     applyFeatureVisibility();
     if(!canFeature('dashboard.view')){const fallback=Object.entries(featureForView).find(([view,feature])=>view!=='admin'&&canFeature(feature));if(fallback)showView(fallback[0]);}
   } catch (error) { cloudReady=false; setSyncStatus(`云端连接失败：${error.message}`, 'sync-error'); window.alert(`云端数据库还未准备好或连接失败：${error.message}\n\n请先完成最新的多用户权限迁移。`); renderAll(); }
@@ -492,6 +544,35 @@ async function signUp() {
   if (error) { status.textContent=error.message; status.className='auth-status auth-status-error'; return; }
   byId('authEmail').value=email; byId('authPassword').value=''; showRegisterUI(false);
   setAuthStatus(data.session?'注册成功，正在进入系统…':'注册成功，请查收邮箱并完成验证后再登录。', 'success');
+}
+async function requestPasswordReset(){
+  if(!supabaseClient)return;
+  const email=byId('resetEmail').value.trim(), status=byId('resetStatus'), button=byId('resetSubmit');
+  if(!email){status.textContent='请先填写注册邮箱。';status.className='auth-status auth-status-error';return;}
+  status.textContent='正在发送重置链接…';status.className='auth-status';button.disabled=true;
+  const {error}=await supabaseClient.auth.resetPasswordForEmail(email,{redirectTo:window.location.href});
+  button.disabled=false;
+  if(error){status.textContent=error.message;status.className='auth-status auth-status-error';return;}
+  showResetUI(false);setAuthStatus('重置链接已发送，请检查邮箱。','success');
+}
+async function updatePasswordFromRecovery(){
+  const password=byId('recoveryPassword').value, confirmation=byId('recoveryPasswordConfirm').value, status=byId('recoveryStatus'), button=byId('recoverySubmit');
+  if(password.length<6){status.textContent='密码至少需要 6 位。';status.className='auth-status auth-status-error';return;}
+  if(password!==confirmation){status.textContent='两次输入的密码不一致。';status.className='auth-status auth-status-error';return;}
+  status.textContent='正在保存…';status.className='auth-status';button.disabled=true;
+  const {error}=await supabaseClient.auth.updateUser({password});button.disabled=false;
+  if(error){status.textContent=error.message;status.className='auth-status auth-status-error';return;}
+  await supabaseClient.auth.signOut();
+  setAuthStatus('密码已更新，请使用新密码登录。','success');
+}
+async function changePassword(){
+  const password=byId('changePassword').value, confirmation=byId('changePasswordConfirm').value, status=byId('changePasswordMessage'), button=byId('changePasswordForm button[type="submit"]');
+  if(password.length<6){status.textContent='密码至少需要 6 位。';status.className='ai-status error';return;}
+  if(password!==confirmation){status.textContent='两次输入的密码不一致。';status.className='ai-status error';return;}
+  button.disabled=true;status.textContent='正在保存…';status.className='ai-status';
+  const {error}=await supabaseClient.auth.updateUser({password});button.disabled=false;
+  if(error){status.textContent=error.message;status.className='ai-status error';return;}
+  byId('changePasswordForm').reset();status.textContent='密码已更新。';status.className='ai-status success';
 }
 async function signOut() { if (supabaseClient) await supabaseClient.auth.signOut(); }
 const issueEntries = () => orders.flatMap(order => {
@@ -1037,6 +1118,11 @@ byId('authForm').addEventListener('submit',event=>{event.preventDefault();signIn
 byId('authSignUp').addEventListener('click',()=>showRegisterUI(true));
 byId('registerForm').addEventListener('submit',event=>{event.preventDefault();signUp();});
 byId('authBackToLogin').addEventListener('click',()=>showRegisterUI(false));
+byId('authResetPassword').addEventListener('click',()=>showResetUI(true));
+byId('resetForm').addEventListener('submit',event=>{event.preventDefault();requestPasswordReset();});
+byId('resetBackToLogin').addEventListener('click',()=>showResetUI(false));
+byId('recoveryForm').addEventListener('submit',event=>{event.preventDefault();updatePasswordFromRecovery();});
+byId('changePasswordForm').addEventListener('submit',event=>{event.preventDefault();changePassword();});
 byId('aiSettingsForm').addEventListener('submit',event=>{event.preventDefault();saveAiSettings();});
 byId('memoryForm')?.addEventListener('submit',saveManualMemory);
 byId('aiProvider').addEventListener('change',event=>{if(event.target.value==='deepseek'){if(!byId('aiBaseUrl').value||byId('aiBaseUrl').value.includes('openai.com'))byId('aiBaseUrl').value='https://api.deepseek.com';if(!byId('aiModel').value||byId('aiModel').value==='gpt-4o-mini')byId('aiModel').value='deepseek-flash';}else if(event.target.value==='openai-compatible'&&byId('aiBaseUrl').value.includes('deepseek.com')){byId('aiBaseUrl').value='https://api.openai.com/v1';if(byId('aiModel').value==='deepseek-flash')byId('aiModel').value='gpt-4o-mini';}});
@@ -1200,7 +1286,7 @@ async function initApp(){
   const {data,error}=await supabaseClient.auth.getSession();
   if(error){setAuthStatus(`无法读取登录状态：${error.message}`,'error');return;}
   await handleSession(data.session);
-  supabaseClient.auth.onAuthStateChange((_event,session)=>{setTimeout(()=>handleSession(session),0);});
+  supabaseClient.auth.onAuthStateChange((event,session)=>{setTimeout(()=>handleSession(session,event),0);});
 }
 function assistantConversationLabel(conversation){return conversation?.title||'未命名对话';}
 function assistantConversationStatusLabel(status){return status==='archived'?'已归档':'使用中';}
@@ -1395,6 +1481,17 @@ function renderAdminUsers(){
   const table=byId('adminUserTable');if(!table)return;
   table.innerHTML=adminUsers.map(user=>`<tr><td><strong>${escapeHtml(user.email||user.user_id)}</strong><small>${escapeHtml(user.display_name||'')}</small></td><td>${user.role==='admin'?'管理员':'普通用户'}</td><td><span class="admin-user-status ${adminStatusClass(user.account_status)}">${featureText(user.account_status)}</span></td><td>${escapeHtml(String(user.created_at||'').slice(0,16).replace('T',' '))}</td><td class="row-actions">${user.role!=='admin'&&user.account_status==='pending'?`<button class="button quiet" data-admin-status="approved" data-admin-user="${user.user_id}">通过</button><button class="button quiet danger" data-admin-status="rejected" data-admin-user="${user.user_id}">拒绝</button>`:''}${user.role!=='admin'&&user.account_status==='approved'?`<button class="button quiet danger" data-admin-status="suspended" data-admin-user="${user.user_id}">暂停</button>`:''}${user.role!=='admin'&&user.account_status!=='approved'?`<button class="button quiet" data-admin-status="approved" data-admin-user="${user.user_id}">通过</button>`:''}${user.role!=='admin'?`<button class="button quiet" data-admin-permissions="${user.user_id}">权限</button>`:''}</td></tr>`).join('')||'<tr><td colspan="5"><div class="empty-state">暂无注册用户</div></td></tr>';
 }
+function auditActionLabel(action){return ({account_approved:'通过审核',account_rejected:'拒绝注册',account_suspended:'暂停账号',permissions_updated:'更新功能权限'})[action]||action||'未知操作';}
+function renderAdminAuditLogs(logs=[]){
+  const table=byId('adminAuditTable');if(!table)return;
+  table.innerHTML=logs.map(log=>`<tr><td>${escapeHtml(String(log.created_at||'').slice(0,16).replace('T',' '))}</td><td>${escapeHtml(log.actor_user_id||'管理员')}</td><td>${escapeHtml(log.target_user_id||'—')}</td><td>${escapeHtml(auditActionLabel(log.action))}</td></tr>`).join('')||'<tr><td colspan="4"><div class="empty-state">暂无管理员操作记录</div></td></tr>';
+}
+async function loadAdminAuditLogs(){
+  if(currentProfile?.role!=='admin'||!supabaseClient)return;
+  const {data,error}=await supabaseClient.from('admin_audit_logs').select('id,actor_user_id,target_user_id,action,details,created_at').order('created_at',{ascending:false}).limit(100);
+  if(error){console.warn('Admin audit logs unavailable',error.message);renderAdminAuditLogs([]);return;}
+  renderAdminAuditLogs(data||[]);
+}
 async function loadAdminUsers(){
   if(currentProfile?.role!=='admin'||!supabaseClient)return;
   const status=byId('adminStatus');if(status)status.textContent='正在读取用户列表…';
@@ -1416,6 +1513,7 @@ async function saveAdminPermissions(){
   const button=byId('saveAdminPermissions');button.disabled=true;
   const rows=[...document.querySelectorAll('[data-admin-feature]')].map(input=>({user_id:selectedAdminUserId,feature_key:input.dataset.adminFeature,enabled:input.checked,granted_by:currentUser.id}));
   const {error}=await supabaseClient.from('user_feature_permissions').upsert(rows,{onConflict:'user_id,feature_key'});
+  if(!error){await supabaseClient.from('admin_audit_logs').insert({actor_user_id:currentUser.id,target_user_id:selectedAdminUserId,action:'permissions_updated',details:{features:rows.filter(row=>row.enabled).map(row=>row.feature_key)}});await loadAdminAuditLogs();}
   if(error)byId('adminPermissionStatus').textContent=error.message;else byId('adminPermissionStatus').textContent='权限已保存';
   button.disabled=false;
 }
@@ -1427,7 +1525,7 @@ async function updateAdminUserStatus(userId,nextStatus){
   const {error}=await supabaseClient.from('profiles').update(patch).eq('user_id',userId);
   if(error){byId('adminStatus').textContent=error.message;byId('adminStatus').className='ai-status error';return;}
   await supabaseClient.from('admin_audit_logs').insert({actor_user_id:currentUser.id,target_user_id:userId,action:`account_${nextStatus}`,details:{status:nextStatus}});
-  await loadAdminUsers();
+  await loadAdminUsers();await loadAdminAuditLogs();
 }
 
 const showViewWithAccess=showView;
@@ -1437,7 +1535,7 @@ showView=function showViewWithFeatureAccess(view){
   showViewWithAccess(view);
   document.querySelectorAll('.order-toolbar-only').forEach(element=>element.classList.toggle('hidden',view==='otherIncome'||view==='ai'||view==='knowledge'||view==='settings'||view==='memory'||view==='admin'));
   if(view==='admin')byId('viewTitle').textContent='用户管理';
-  if(view==='admin')loadAdminUsers();
+  if(view==='admin'){loadAdminUsers();loadAdminAuditLogs();}
 };
 applyFeatureVisibility=function applyFeatureVisibilityWithActions(){
   document.querySelectorAll('[data-view]').forEach(item=>{const feature=featureForView[item.dataset.view];item.hidden=Boolean(feature&&!canFeature(feature));});

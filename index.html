@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261022-43" />
+    <link rel="stylesheet" href="styles.css?v=20261022-44" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -128,6 +128,7 @@
       .auth-shell,.approval-shell{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 15% 10%,#e8dfce 0,#f5f1e8 42%,#e9eee7 100%)}
       .auth-card{width:min(440px,100%);padding:34px;background:#fffdf8;border:1px solid #ded7c7;border-radius:10px;box-shadow:0 24px 70px rgba(20,59,54,.12)}
       .auth-card .auth-status{min-height:18px;margin:14px 0 0;text-align:center;font-size:12px;line-height:1.5}.auth-card .auth-status:empty{display:none}.auth-card .auth-back{display:block;width:100%;margin-top:16px;padding:0;text-align:center}
+      .auth-secondary{display:block;width:100%;margin-top:13px;padding:0;text-align:center;color:#8e6737}.auth-secondary:hover{color:#6e4a25}.account-security-panel{margin-top:16px}.account-security-form{display:grid;gap:12px;padding:0 20px 20px}.account-security-form label{display:grid;gap:6px;color:#716d65;font-size:12px}.account-security-form input{width:100%}
       .auth-card h1{margin:0;color:#143b36;font:700 29px "Noto Serif SC",serif}.auth-lead{color:#77766f;font-size:13px;line-height:1.7;margin:12px 0 23px}.auth-card form{display:grid;gap:14px}.auth-card label{display:grid;gap:6px;color:#716d65;font-size:12px}.auth-card input{width:100%}.auth-card #authSubmit{width:100%;margin-top:4px}.auth-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:15px}.auth-actions .text-button{padding:0}.auth-note{color:#989187;font-size:11px;line-height:1.6;margin:16px 0 0}.auth-status-error{color:#a84d3e!important}.auth-status-success{color:#267255!important}.sidebar-action{display:block;color:#d6e0db;text-align:left;margin-top:10px;padding:0;font-size:11px}.sidebar-action:hover{color:#fff}.sidebar-note #currentUserEmail{display:block;margin-top:4px;overflow-wrap:anywhere;color:#afc0b9}.app-version{display:block;margin-top:10px;color:#78948a;font:10px "DM Mono",monospace;letter-spacing:.04em}.syncing{color:#d6aa63!important}.synced{color:#8ec9aa!important}.sync-error{color:#f0a698!important}.row-actions{white-space:nowrap}.row-actions .button{padding:5px 8px;font-size:11px;margin-left:3px}.row-actions .danger,.detail-actions .danger{color:#a84d3e}
       .button:disabled{opacity:.55;cursor:wait;transform:none!important}
       .ai-hero{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:27px 31px;margin-bottom:17px;background:linear-gradient(118deg,#173f39,#285f54 60%,#b8833e);border-radius:8px;color:#fff;box-shadow:var(--shadow);overflow:hidden;position:relative}
@@ -241,6 +242,7 @@
           <label>密码<input id="authPassword" type="password" autocomplete="current-password" minlength="6" required placeholder="至少 6 位密码" /></label>
           <button class="button primary" id="authSubmit" type="submit">登录</button>
         </form>
+        <button class="text-button auth-secondary" id="authResetPassword" type="button">忘记密码？</button>
         <div class="auth-actions"><button class="text-button" id="authSignUp" type="button">没有账号？注册</button><span id="authStatus" role="status"></span></div>
         <p class="auth-note">首次使用：先在这里注册，若项目开启邮箱验证，请先点击邮件中的确认链接。</p>
       </div>
@@ -259,6 +261,34 @@
         </form>
         <p id="registerStatus" class="auth-status" role="status"></p>
         <button class="text-button auth-back" id="authBackToLogin" type="button">已有账号？返回登录</button>
+      </div>
+    </section>
+
+    <section class="auth-shell register-shell" id="resetShell" hidden>
+      <div class="auth-card">
+        <p class="eyebrow">ACCOUNT RECOVERY</p>
+        <h1>找回密码</h1>
+        <p class="auth-lead">输入注册邮箱，我们会发送密码重置链接。</p>
+        <form id="resetForm">
+          <label>邮箱<input id="resetEmail" type="email" autocomplete="email" required placeholder="输入注册邮箱" /></label>
+          <button class="button primary" id="resetSubmit" type="submit">发送重置链接</button>
+        </form>
+        <p id="resetStatus" class="auth-status" role="status"></p>
+        <button class="text-button auth-back" id="resetBackToLogin" type="button">返回登录</button>
+      </div>
+    </section>
+
+    <section class="auth-shell register-shell" id="recoveryShell" hidden>
+      <div class="auth-card">
+        <p class="eyebrow">SET NEW PASSWORD</p>
+        <h1>设置新密码</h1>
+        <p class="auth-lead">请输入新的登录密码，保存后即可重新登录。</p>
+        <form id="recoveryForm">
+          <label>新密码<input id="recoveryPassword" type="password" autocomplete="new-password" minlength="6" required placeholder="至少 6 位密码" /></label>
+          <label>确认密码<input id="recoveryPasswordConfirm" type="password" autocomplete="new-password" minlength="6" required placeholder="再次输入密码" /></label>
+          <button class="button primary" id="recoverySubmit" type="submit">保存新密码</button>
+        </form>
+        <p id="recoveryStatus" class="auth-status" role="status"></p>
       </div>
     </section>
 
@@ -299,7 +329,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-           <small class="app-version">版本 20261022-43</small>
+           <small class="app-version">版本 20261022-44</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -494,12 +524,21 @@
           <section class="view settings-view" id="settingsView">
            <div class="section-heading"><div><p class="eyebrow">WORKSPACE SETTINGS</p><h2>设置</h2><p>配置 AI 模型接口和工作台行为。API Key 只保存在 Supabase Edge Function，不会写入浏览器。</p></div><span class="knowledge-page-mark">⚙</span></div>
            <div id="settingsPageMount" class="settings-page-mount"></div>
+           <section class="panel account-security-panel">
+             <div class="panel-head"><div><p class="eyebrow">ACCOUNT SECURITY</p><h2>账号安全</h2></div><span id="accountSecurityStatus" class="panel-caption">登录账号密码管理</span></div>
+             <form id="changePasswordForm" class="account-security-form">
+               <label>新密码<input id="changePassword" type="password" autocomplete="new-password" minlength="6" required placeholder="至少 6 位密码" /></label>
+               <label>确认新密码<input id="changePasswordConfirm" type="password" autocomplete="new-password" minlength="6" required placeholder="再次输入新密码" /></label>
+               <div class="ai-entry-actions"><span id="changePasswordMessage" class="ai-status" role="status"></span><button class="button primary" type="submit">修改密码</button></div>
+             </form>
+           </section>
           </section>
 
           <section class="view admin-view" id="adminView">
             <div class="section-heading"><div><p class="eyebrow">ACCESS CONTROL</p><h2>用户管理</h2><p>审核用户并分配功能权限。管理员默认不读取用户的业务数据。</p></div><span class="knowledge-page-mark">◎</span></div>
             <section class="panel admin-toolbar"><div class="panel-head"><div><p class="eyebrow">ACCOUNT REVIEW</p><h2>账号审核</h2></div><button class="button quiet" id="refreshAdminUsers" type="button">刷新</button></div><p id="adminStatus" class="ai-status">仅管理员可见。</p></section>
             <section class="panel"><div class="table-panel panel"><div class="table-scroll"><table><thead><tr><th>邮箱</th><th>角色</th><th>状态</th><th>注册时间</th><th>操作</th></tr></thead><tbody id="adminUserTable"></tbody></table></div></div></section>
+            <section class="panel"><div class="panel-head"><div><p class="eyebrow">AUDIT LOG</p><h2>管理员操作记录</h2></div><span class="panel-caption">仅记录账号审核和权限调整</span></div><div class="table-scroll"><table><thead><tr><th>时间</th><th>操作人</th><th>目标用户</th><th>操作</th></tr></thead><tbody id="adminAuditTable"></tbody></table></div></section>
             <section class="panel admin-permission-panel" id="adminPermissionPanel" hidden><div class="panel-head"><div><p class="eyebrow">FEATURE ACCESS</p><h2 id="adminPermissionTitle">功能权限</h2></div><button class="button quiet" id="closeAdminPermission" type="button">关闭</button></div><div id="adminPermissionList" class="admin-permission-list"></div><div class="ai-entry-actions"><span id="adminPermissionStatus" class="ai-status"></span><button class="button primary" id="saveAdminPermissions" type="button">保存权限</button></div></section>
           </section>
 
@@ -662,6 +701,6 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261022-43"></script>
+    <script src="app.js?v=20261022-44"></script>
   </body>
 </html>
