@@ -324,7 +324,10 @@ async function runAssistantChatLegacy(question){
 }
 function clearAiDraftPreview(message='已填入表单，请核对后保存。'){
   aiDraft=null;
-  const panel=byId('aiDraftPanel');if(panel){panel.hidden=true;panel.innerHTML='';}
+  // Keep the static draft controls in the DOM. Clearing innerHTML here removes
+  // aiDraftIntent/aiDraftSummary/aiDraftJson, so the next AI draft crashes
+  // when renderAiDraft() tries to update those nodes.
+  const panel=byId('aiDraftPanel');if(panel)panel.hidden=true;
   const analysis=byId('analysisResult');if(analysis)analysis.hidden=true;
   clearPendingAction();
   const status=byId('aiAccountingStatus');if(status){status.textContent=message;status.className='ai-status success';}
