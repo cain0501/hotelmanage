@@ -1561,6 +1561,55 @@ updateKnowledgeStatus=async function updateKnowledgeStatusWithAdminAccess(id,sta
   await loadAssistantWorkspace();
 };
 
+function renderKnowledgeListWithTools(){
+  const panel=byId('knowledgeList');if(!panel)return;
+  const query=(byId('knowledgeSearch')?.value||'').trim().toLowerCase();
+  const status=byId('knowledgeStatusFilter')?.value||'all';
+  const category=byId('knowledgeCategoryFilter')?.value||'all';
+  const list=assistantKnowledge.filter(item=>{
+    const haystack=String(item.title||'')+' '+String(item.content||'')+' '+String(item.source||'')+' '+String(item.scope||'');
+    return (status==='all'||item.status===status)&&(category==='all'||item.category===category)&&(!query||haystack.toLowerCase().includes(query));
+  });
+  if(!list.length){panel.innerHTML='<span class="ai-status">没有匹配的知识。保存后会先进入草稿，发布后 AI 才会检索使用。</span>';return;}
+  panel.innerHTML=list.map(item=>{
+    const actions=(item.status==='draft'?'<button class="button quiet" data-knowledge-action="publish" data-knowledge-id="'+escapeHtml(item.id)+'">发布使用</button>':'')+(item.status==='published'?'<button class="button quiet" data-knowledge-action="archive" data-knowledge-id="'+escapeHtml(item.id)+'">标记废弃</button>':'');
+    return '<article class="knowledge-card"><div class="knowledge-card-head"><span class="knowledge-card-title">'+escapeHtml(item.title||'未命名知识')+'</span><span class="knowledge-status '+escapeHtml(item.status||'draft')+'">'+assistantStatusText(item.status)+'</span></div><div class="knowledge-card-meta"><span>'+assistantKnowledgeCategoryText(item.category)+'</span><span>版本 '+escapeHtml(item.version||1)+'</span><span>'+escapeHtml(item.scope||'personal')+'</span><span>'+escapeHtml(item.source||'用户提供')+'</span></div><p>'+escapeHtml(item.content||'')+'</p><div class="knowledge-card-actions">'+actions+'</div></article>';
+  }).join('');
+}
+renderKnowledgeList=renderKnowledgeListWithTools;
+
+async function importKnowledgeFile(){
+  const file=byId('knowledgeFile')?.files?.[0], status=byId('knowledgeImportStatus');
+  if(!file){status.textContent='请先选择 Markdown、Word 或 PDF 文件。';status.className='ai-status error';return;}
+  status.textContent='正在读取文件…';status.className='ai-status';
+  try{
+    const extension=file.name.split('.').pop()?.toLowerCase();let content='';
+    if(['md','markdown','txt'].includes(extension))content=await file.text();
+    else if(extension==='docx'){
+      if(!window.mammoth)throw new Error('Word 解析组件未加载，请检查网络后刷新。');
+      const result=await window.mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()});content=result.value||'';
+    }else if(extension==='pdf'){
+      const pdfjs=await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs');
+      pdfjs.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs';
+      const pdf=await pdfjs.getDocument({data:await file.arrayBuffer()}).promise;const pages=[];
+      for(let pageNumber=1;pageNumber<=pdf.numPages;pageNumber++){const page=await pdf.getPage(pageNumber);const text=await page.getTextContent();pages.push(text.items.map(item=>item.str||'').join(' '));}
+      content=pages.join('\n\n');
+    }else throw new Error('暂不支持该文件类型。');
+    if(!content.trim())throw new Error('文件中没有可读取的文字。');
+    byId('knowledgeTitle').value=file.name.replace(/\.[^.]+$/,'');
+    byId('knowledgeContent').value=content.trim();
+    byId('knowledgeSource').value=file.name;
+    status.textContent='文件已导入表单，请检查标题、分类和内容后保存草稿。';status.className='ai-status success';
+  }catch(error){status.textContent='导入失败：'+error.message;status.className='ai-status error';}
+}
+byId('knowledgeImportFile')?.addEventListener('click',importKnowledgeFile);
+['knowledgeSearch','knowledgeStatusFilter','knowledgeCategoryFilter'].forEach(id=>byId(id)?.addEventListener('input',renderKnowledgeListWithTools));
+document.addEventListener('submit',event=>{
+  if(event.target.id!=='knowledgeForm')return;
+  const keywords=byId('knowledgeKeywords')?.value.trim(),scope=byId('knowledgeScopeText')?.value.trim();
+  if(keywords)byId('knowledgeScopeText').value=[scope,'标签：'+keywords].filter(Boolean).join(' / ');
+},true);
+
 document.addEventListener('click',event=>{
   const statusButton=event.target.closest('[data-admin-status]');if(statusButton){updateAdminUserStatus(statusButton.dataset.adminUser,statusButton.dataset.adminStatus);return;}
   const permissionButton=event.target.closest('[data-admin-permissions]');if(permissionButton){openAdminPermissions(permissionButton.dataset.adminPermissions);return;}

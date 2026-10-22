@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261022-44" />
+    <link rel="stylesheet" href="styles.css?v=20261022-45" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -128,6 +128,7 @@
       .auth-shell,.approval-shell{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 15% 10%,#e8dfce 0,#f5f1e8 42%,#e9eee7 100%)}
       .auth-card{width:min(440px,100%);padding:34px;background:#fffdf8;border:1px solid #ded7c7;border-radius:10px;box-shadow:0 24px 70px rgba(20,59,54,.12)}
       .auth-card .auth-status{min-height:18px;margin:14px 0 0;text-align:center;font-size:12px;line-height:1.5}.auth-card .auth-status:empty{display:none}.auth-card .auth-back{display:block;width:100%;margin-top:16px;padding:0;text-align:center}
+      .knowledge-tools,.knowledge-import{display:grid;grid-template-columns:minmax(0,1fr) 150px 150px;gap:8px;margin:0 20px 12px}.knowledge-tools input,.knowledge-tools select{min-width:0}.knowledge-import{grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:10px;background:#f7f1e7;border-radius:5px}.knowledge-import input{min-width:0;font-size:11px}.knowledge-import span{grid-column:1 / -1}.knowledge-card-meta{display:flex;gap:8px;flex-wrap:wrap;color:#938b7f;font-size:10px}.knowledge-card-meta span{overflow-wrap:anywhere}
       .auth-secondary{display:block;width:100%;margin-top:13px;padding:0;text-align:center;color:#8e6737}.auth-secondary:hover{color:#6e4a25}.account-security-panel{margin-top:16px}.account-security-form{display:grid;gap:12px;padding:0 20px 20px}.account-security-form label{display:grid;gap:6px;color:#716d65;font-size:12px}.account-security-form input{width:100%}
       .auth-card h1{margin:0;color:#143b36;font:700 29px "Noto Serif SC",serif}.auth-lead{color:#77766f;font-size:13px;line-height:1.7;margin:12px 0 23px}.auth-card form{display:grid;gap:14px}.auth-card label{display:grid;gap:6px;color:#716d65;font-size:12px}.auth-card input{width:100%}.auth-card #authSubmit{width:100%;margin-top:4px}.auth-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:15px}.auth-actions .text-button{padding:0}.auth-note{color:#989187;font-size:11px;line-height:1.6;margin:16px 0 0}.auth-status-error{color:#a84d3e!important}.auth-status-success{color:#267255!important}.sidebar-action{display:block;color:#d6e0db;text-align:left;margin-top:10px;padding:0;font-size:11px}.sidebar-action:hover{color:#fff}.sidebar-note #currentUserEmail{display:block;margin-top:4px;overflow-wrap:anywhere;color:#afc0b9}.app-version{display:block;margin-top:10px;color:#78948a;font:10px "DM Mono",monospace;letter-spacing:.04em}.syncing{color:#d6aa63!important}.synced{color:#8ec9aa!important}.sync-error{color:#f0a698!important}.row-actions{white-space:nowrap}.row-actions .button{padding:5px 8px;font-size:11px;margin-left:3px}.row-actions .danger,.detail-actions .danger{color:#a84d3e}
       .button:disabled{opacity:.55;cursor:wait;transform:none!important}
@@ -145,6 +146,7 @@
       .ai-entry-panel .cleanup-form{grid-template-columns:1fr 1fr}.ai-entry-panel .cleanup-form .button{grid-column:1 / -1;width:100%}
       @media(max-width:650px){.analysis-metrics{grid-template-columns:1fr 1fr}.analysis-actions{align-items:flex-start;flex-direction:column}.analysis-actions .button{width:100%}}
       @media(max-width:650px){.auth-card{padding:26px 21px}.auth-actions{align-items:flex-start;flex-direction:column}}
+      @media(max-width:650px){.knowledge-tools,.knowledge-import{grid-template-columns:1fr}.knowledge-import span{grid-column:auto}}
       .quality-filter-panel{background:#fffdf8;border:1px solid var(--line);border-radius:7px;padding:17px 19px;margin-bottom:16px}.quality-filter-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;padding-bottom:13px;border-bottom:1px solid #eee7d9}.quality-filter-head h2{margin:0;font:700 17px "Noto Serif SC",serif}.quality-filter-head span{color:#8e887d;font-size:11px}.quality-filter-grid{display:grid;grid-template-columns:1fr 1fr minmax(180px,1.5fr) auto;align-items:end;gap:12px;padding-top:15px}.quality-filter-grid label{display:grid;gap:5px;color:#756f65;font-size:11px}.quality-filter-grid select,.quality-filter-grid input{width:100%;min-width:0;padding:8px 9px;font-size:12px}.quality-filter-summary{margin-top:12px;color:#8b857a;font-size:11px}.quality-filter-summary strong{color:#143b36;font-size:13px}.quality-issue-list{display:grid;gap:5px}.quality-issue-row{display:grid;gap:7px;padding:10px 0;border-top:1px solid #eee8dd;text-align:left}.quality-issue-row b{color:#8b6738;font:500 11px "DM Mono",monospace}.quality-issue-row span{color:#6f6a61;font-size:11px;line-height:1.45;overflow-wrap:anywhere}.quality-issue-row small{color:#918a80;font-size:10px;line-height:1.45;overflow-wrap:anywhere}.quality-issue-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.quality-smart-tag{display:inline-flex;padding:2px 6px;border-radius:999px;background:#e8f2eb;color:#287052;font-size:10px;white-space:nowrap}.quality-evidence,.quality-suggestion{display:block;padding:6px 8px;border-radius:4px}.quality-evidence{background:#f4eee3;color:#75684f!important}.quality-suggestion{background:#edf4f0;color:#287052!important}.quality-row-actions{display:flex;gap:7px;flex-wrap:wrap}.quality-row-actions .button{padding:5px 8px;font-size:10px}.quality-state{font-size:10px!important;color:#8b6738!important}.quality-state.processed{color:#287052!important}.quality-state.ignored{color:#8b857a!important}
       @media(max-width:800px){.quality-filter-grid{grid-template-columns:1fr 1fr}.quality-filter-grid .quality-filter-keyword{grid-column:1 / -1}.quality-filter-grid .button{width:100%}} @media(max-width:520px){.quality-filter-head{align-items:flex-start;flex-direction:column}.quality-filter-grid{grid-template-columns:1fr}.quality-filter-grid .quality-filter-keyword{grid-column:auto}}
       /* AI 工作台改为连续对话布局，输入区固定在消息流下方。 */
@@ -329,7 +331,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-           <small class="app-version">版本 20261022-44</small>
+           <small class="app-version">版本 20261022-45</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -503,7 +505,10 @@
              </section>
              <section class="panel knowledge-panel">
                <div class="panel-head"><div><p class="eyebrow">PROFESSIONAL KNOWLEDGE</p><h2>专业知识库</h2></div><span class="panel-caption">先保存草稿，再发布使用</span></div>
-               <form id="knowledgeForm" class="knowledge-form">
+                <div class="knowledge-tools"><input id="knowledgeSearch" placeholder="搜索标题、内容、标签" /><select id="knowledgeStatusFilter"><option value="all">全部状态</option><option value="draft">草稿</option><option value="published">已发布</option><option value="archived">已废弃</option></select><select id="knowledgeCategoryFilter"><option value="all">全部分类</option><option value="hotel_product">酒店产品</option><option value="hotel_policy">酒店政策</option><option value="supplier_rule">供应商规则</option><option value="operation_rule">运营操作</option><option value="destination">目的地经验</option><option value="case_learning">历史案例</option></select></div>
+                <div class="knowledge-import"><input id="knowledgeFile" type="file" accept=".md,.markdown,.txt,.docx,.pdf" /><button class="button quiet" id="knowledgeImportFile" type="button">导入文件到表单</button><span id="knowledgeImportStatus" class="ai-status">支持 Markdown、Word 和 PDF，导入后请核对再保存。</span></div>
+                <form id="knowledgeForm" class="knowledge-form">
+                  <label>标签<input id="knowledgeKeywords" placeholder="例如：广州、瑰丽、早餐、佣金" /></label>
                  <label>知识标题<input id="knowledgeTitle" required placeholder="例如：广州瑰丽行政房政策" /></label>
                  <label>分类<select id="knowledgeCategory"><option value="hotel_product">酒店产品</option><option value="hotel_policy">酒店政策</option><option value="supplier_rule">供应商规则</option><option value="operation_rule">运营操作</option><option value="destination">目的地经验</option><option value="case_learning">历史案例</option></select></label>
                  <label>适用范围<input id="knowledgeScopeText" placeholder="例如：广州瑰丽 / 广州 / 全部酒店" /></label>
@@ -701,6 +706,7 @@
     <template id="emptyState"><div class="empty-state">暂无记录</div></template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20261022-44"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+    <script src="app.js?v=20261022-45"></script>
   </body>
 </html>
