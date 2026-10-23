@@ -29,6 +29,7 @@ create table if not exists public.import_batches (
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   file_name text not null default '',
   sheet_name text not null default '',
+  file_fingerprint text not null default '',
   row_count integer not null default 0,
   status text not null default 'active' check (status in ('active', 'reverted')),
   created_at timestamptz not null default now(),
@@ -37,6 +38,9 @@ create table if not exists public.import_batches (
 
 create index if not exists import_batches_user_created_idx
   on public.import_batches (user_id, created_at desc);
+create unique index if not exists import_batches_user_fingerprint_idx
+  on public.import_batches (user_id, file_fingerprint)
+  where file_fingerprint <> '';
 
 do $$
 begin

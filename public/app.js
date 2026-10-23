@@ -74,6 +74,9 @@ let cleanupPreviewFrom = '';
 let cleanupPreviewTo = '';
 const localOtherIncomes = JSON.parse(localStorage.getItem('qizhang-other-income-guest') || '[]');
 let otherIncomes = [];
+let ledgerTransactions = [];
+let ledgerAvailable = false;
+let pendingImport = null;
 
 const byId = id => document.getElementById(id);
 document.addEventListener('click', event=>{
@@ -134,6 +137,25 @@ const saveOrder = async order => {
   if (error) { setSyncStatus(`同步失败：${error.message}`, 'sync-error'); throw error; }
   setSyncStatus('已同步到云端', 'synced');
 };
+const saveLedgerTransaction = async ({ orderId, kind, amount, date, note, source='manual' }) => {
+  const record = { order_id: orderId || null, kind, amount: Number(amount || 0), occurred_at: date || today, note: note || '', source };
+  if (!cloudReady || !currentUser || !ledgerAvailable) return;
+  const { data, error } = await supabaseClient.from('ledger_transactions').insert({ ...record, user_id: currentUser.id }).select('id,order_id,kind,amount,occurred_at,note,source').single();
+  if (error) throw error;
+  ledgerTransactions=[rowToLedgerTransaction(data),...ledgerTransactions];
+};
+const importFingerprint = file => `${file.name}::${file.size}::${file.lastModified}`;
+async function createImportBatch(file, sheetName, rowCount, { create=true }={}){
+  if(!cloudReady||!currentUser)return null;
+  const fingerprint=importFingerprint(file);
+  const existing=await supabaseClient.from('import_batches').select('id,status,file_name,created_at').eq('user_id',currentUser.id).eq('file_fingerprint',fingerprint).maybeSingle();
+  if(existing.error&&!['42P01','PGRST205'].includes(existing.error.code)&&existing.error.status!==404)throw existing.error;
+  if(existing.data)return {duplicate:existing.data};
+  if(!create)return null;
+  const result=await supabaseClient.from('import_batches').insert({user_id:currentUser.id,file_name:file.name,sheet_name:sheetName,file_fingerprint:fingerprint,row_count:rowCount,status:'active'}).select('id').single();
+  if(result.error){if(['42P01','PGRST205'].includes(result.error.code)||result.error.status===404)return null;throw result.error;}
+  return {id:result.data.id};
+}
 const saveOtherIncomesBatch = async () => {
   saveLocalOtherIncomes();
   if (!cloudReady || !currentUser) return;
@@ -194,7 +216,7 @@ const orderToRow = order => ({
   location: order.location || '', supplier: order.supplier || '', product: order.product || '', rooms: asNumber(order.rooms), nights: asNumber(order.nights), tickets: asNumber(order.tickets),
   confirmation: order.confirmation || '', gmv: asNumber(order.gmv), cost: asNumber(order.cost), received: asNumber(order.received), payment_status: customerPaymentStatus(order), customer_payment_status: customerPaymentStatus(order), supplier_paid: supplierPaid(order), supplier_payment_status: supplierPaymentStatus(order),
   payment_platform: order.paymentPlatform || '', settlement_mode: settlementMode(order), guest_payment_to: order.guestPaymentTo || '', commission_platform: order.commissionPlatform || '', commission_expected: commissionExpected(order), commission_received: commissionReceived(order), commission_status: commissionStatus(order), direct_cost: directCost(order), commission_received_date: emptyToNull(order.commissionReceivedDate), invoice_status: invoiceStatus(order), invoice_company: order.invoiceCompany || '', profit_override: emptyToNull(order.profitOverride),
-  status: order.status || 'booked', issues: Array.isArray(order.issues) ? order.issues : []
+  status: order.status || 'booked', issues: Array.isArray(order.issues) ? order.issues : [], ...(order.importBatchId ? { import_batch_id: order.importBatchId, source_row: order.sourceRow || null } : {})
 });
 const rowToOrder = row => ({
   id: row.id, orderCode: row.order_code || row.id, type: row.type || 'hotel', customer: row.customer || '', booker: row.booker || '', orderDate: row.order_date || '', serviceDate: row.service_date || '',
@@ -206,18 +228,10 @@ const rowToOrder = row => ({
 const incomeOrderIds = item => Array.isArray(item.orderIds) ? item.orderIds : item.orderId ? [item.orderId] : [];
 const otherIncomeToRow = item => ({ id: item.id, user_id: currentUser?.id, income_date: emptyToNull(item.date) || today, name: item.name || '', payer: item.payer || '', payee: item.payee || '', order_id: incomeOrderIds(item).join(','), amount: asNumber(item.amount), expense: asNumber(item.expense) });
 const rowToOtherIncome = row => ({ id: row.id, date: row.income_date || '', name: row.name || '', payer: row.payer || '', payee: row.payee || '', orderId: row.order_id || '', orderIds: String(row.order_id || '').split(',').map(id=>id.trim()).filter(Boolean), amount: asNumber(row.amount), expense: asNumber(row.expense) });
+const rowToLedgerTransaction = row => ({ id: row.id, orderId: row.order_id || '', kind: row.kind || '', amount: asNumber(row.amount), date: row.occurred_at || '', note: row.note || '', source: row.source || 'manual' });
 function syncAiSettingsForm(){
   if(!byId('aiProvider'))return;
   byId('aiProvider').value=aiSettings.provider||'openai-compatible';byId('aiBaseUrl').value=aiSettings.baseUrl||'';byId('aiModel').value=aiSettings.model||'';byId('aiTemperature').value=aiSettings.temperature??0.1;byId('aiEnabled').checked=Boolean(aiSettings.enabled);byId('aiConfigStatus').textContent=aiSettings.enabled?'已启用':'未启用';
-}
-async function loadAiSettings(){
-  if(!currentUser||!supabaseClient)return;
-  try{const {data,error}=await supabaseClient.from('ai_settings').select('provider,base_url,model,temperature,enabled').eq('user_id',currentUser.id).maybeSingle();if(error)throw error;if(data)aiSettings={provider:data.provider||'openai-compatible',baseUrl:data.base_url||'https://api.openai.com/v1',model:data.model||'gpt-4o-mini',temperature:Number(data.temperature??0.1),enabled:Boolean(data.enabled)};syncAiSettingsForm();}catch(error){byId('aiConfigStatus').textContent='需执行 AI 数据库迁移';console.warn('AI settings unavailable',error.message);}
-}
-async function saveAiSettings(){
-  const status=byId('aiSettingsStatus');const button=byId('aiSettingsForm').querySelector('button[type="submit"]');button.disabled=true;status.textContent='正在保存…';status.className='ai-status';
-  aiSettings={provider:byId('aiProvider').value,baseUrl:byId('aiBaseUrl').value.trim()||'https://api.openai.com/v1',model:byId('aiModel').value.trim()||'gpt-4o-mini',temperature:Math.min(.5,Math.max(0,Number(byId('aiTemperature').value||.1))),enabled:byId('aiEnabled').checked};
-  try{if(!cloudReady||!currentUser)throw new Error('请先登录云端账户');const {error}=await supabaseClient.from('ai_settings').upsert({user_id:currentUser.id,provider:aiSettings.provider,base_url:aiSettings.baseUrl,model:aiSettings.model,temperature:aiSettings.temperature,enabled:aiSettings.enabled},{onConflict:'user_id'});if(error)throw error;syncAiSettingsForm();status.textContent='配置已保存';status.className='ai-status success';}catch(error){status.textContent=error.message;status.className='ai-status error';}finally{button.disabled=false;}
 }
 const aiIntentText=intent=>({order:'新增订单',other_income:'其它收入',other_expense:'其它支出',payment:'登记收款',commission:'登记返佣',unknown:'待确认'})[intent]||'待确认';
 async function loadAiSettings(){
@@ -232,39 +246,6 @@ async function saveAiSettings(){
 const assistantConversationStorageKey=()=>`qizhang-assistant-conversation-${currentUser?.id||'guest'}`;
 const assistantStatusText=status=>({draft:'草稿',published:'已发布',expired:'已过期',archived:'已废弃'})[status]||status||'草稿';
 const assistantKnowledgeCategoryText=category=>({hotel_product:'酒店产品',hotel_policy:'酒店政策',supplier_rule:'供应商规则',operation_rule:'运营操作',destination:'目的地经验',case_learning:'历史案例',user_preference:'个人偏好'})[category]||'专业知识';
-function renderAssistantConversation(){
-  const panel=byId('assistantConversation');if(!panel)return;
-  const messages=assistantMessages.slice(-12);panel.innerHTML=messages.length?messages.map(message=>`<div class="assistant-message ${message.role==='user'?'user':'assistant'}"><small>${message.role==='user'?'你':'AI'} · ${escapeHtml(String(message.created_at||'').slice(0,16).replace('T',' '))}</small><span>${escapeHtml(message.content||'')}</span></div>`).join(''):'<div class="assistant-message empty">当前会话会记住日期口径、筛选条件和已确认的业务规则。</div>';
-  panel.scrollTop=panel.scrollHeight;
-}
-async function ensureAssistantConversation(){
-  if(!cloudReady||!currentUser||!supabaseClient)return false;
-  const savedId=localStorage.getItem(assistantConversationStorageKey());let data=null,error=null;
-  if(savedId){({data,error}=await supabaseClient.from('assistant_conversations').select('id').eq('id',savedId).eq('user_id',currentUser.id).maybeSingle());}
-  if(error)throw error;
-  if(!data){({data,error}=await supabaseClient.from('assistant_conversations').select('id').eq('user_id',currentUser.id).order('updated_at',{ascending:false}).limit(1).maybeSingle());if(error)throw error;}
-  if(!data){({data,error}=await supabaseClient.from('assistant_conversations').insert({user_id:currentUser.id,title:'AI 工作台'}).select('id').single());if(error)throw error;}
-  assistantConversationId=data.id;localStorage.setItem(assistantConversationStorageKey(),assistantConversationId);return true;
-}
-async function loadAssistantWorkspace(){
-  assistantWorkspaceAvailable=false;assistantMessages=[];assistantContext={};assistantKnowledge=[];renderAssistantConversation();renderKnowledgeList();
-  if(!cloudReady||!currentUser||!supabaseClient)return;
-  try{
-    await ensureAssistantConversation();
-    const [messagesResult,contextResult,knowledgeResult]=await Promise.all([
-      supabaseClient.from('assistant_messages').select('id,role,content,metadata,created_at').eq('conversation_id',assistantConversationId).order('created_at',{ascending:false}).limit(30),
-      supabaseClient.from('assistant_context').select('*').eq('conversation_id',assistantConversationId).maybeSingle(),
-      supabaseClient.from('assistant_knowledge').select('id,title,category,scope,content,source,status,version,updated_at').order('updated_at',{ascending:false}).limit(50)
-    ]);
-    if(messagesResult.error)throw messagesResult.error;if(contextResult.error)throw contextResult.error;if(knowledgeResult.error)throw knowledgeResult.error;
-    assistantMessages=(messagesResult.data||[]).reverse();assistantContext={...(contextResult.data||{}),...(contextResult.data?.context||{})};assistantKnowledge=knowledgeResult.data||[];assistantWorkspaceAvailable=true;renderAssistantConversation();renderKnowledgeList();
-  }catch(error){if(!['42P01','PGRST205'].includes(error?.code)&&error?.status!==404)console.warn('AI工作台扩展数据暂不可用',error.message);renderAssistantConversation();renderKnowledgeList();}
-}
-async function saveAssistantMessage(role,content,metadata={}){
-  if(!content)return;const record={role,content:String(content),metadata,created_at:new Date().toISOString()};assistantMessages=[...assistantMessages.slice(-29),record];renderAssistantConversation();
-  if(!assistantWorkspaceAvailable||!assistantConversationId||!currentUser||!supabaseClient)return;
-  const {error}=await supabaseClient.from('assistant_messages').insert({user_id:currentUser.id,conversation_id:assistantConversationId,role,content:String(content),metadata});if(error)console.warn('AI会话消息保存失败',error.message);
-}
 async function saveAssistantContext(next={}){
   assistantContext={...assistantContext,...next};
   if(!assistantWorkspaceAvailable||!assistantConversationId||!currentUser||!supabaseClient)return;
@@ -317,20 +298,6 @@ function renderPendingActionPreview(action){
   panel.hidden=false;byId('aiDraftPanel').hidden=true;
 }
 function clearPendingAction(){assistantPendingAction=null;const panel=byId('aiPendingActionPanel');if(panel){panel.hidden=true;panel.innerHTML='';}}
-async function confirmAssistantPendingAction(){
-  const action=assistantPendingAction;if(!action)return;const button=byId('aiPendingActionPanel')?.querySelector('[data-confirm-ai-change]');if(button?.disabled)return;
-  if(button){button.disabled=true;button.textContent='校验并保存中…';}
-  try{
-    if(cloudReady&&currentUser)await loadCloudData({allowMigration:false,silent:true});
-    const field=aiChangeTargetFields[action.target],fromValue=aiChangeValue(action),toValue=aiChangeNextValue(action),ids=new Set((action.affected_record_ids||action.affectedRecordIds||[]).map(String));
-    if(!field||!fromValue||!toValue||!ids.size)throw new Error('批量修改预览已失效，请重新提交问题');
-    const matched=orders.filter(order=>ids.has(String(order.id))&&String(order[field]??'').trim().toLocaleLowerCase()===fromValue.toLocaleLowerCase());
-    if(matched.length!==ids.size)throw new Error('订单数据在确认前发生变化，已取消修改，请重新生成预览');
-    const before=orders.map(order=>({...order}));orders=orders.map(order=>ids.has(String(order.id))?{...order,[field]:toValue}:order);
-     try{await saveOrdersSubset(ids);}catch(error){orders=before;saveLocalOrders();throw error;}
-    clearPendingAction();renderAll();const status=byId('aiAccountingStatus');status.textContent=`已完成：${matched.length} 条订单的${aiChangeTargetLabels[action.target]||action.target}已修改为“${toValue}”`;status.className='ai-status success';
-  }catch(error){const status=byId('aiAccountingStatus');status.textContent=error.message||'批量修改失败';status.className='ai-status error';if(button){button.disabled=false;button.textContent='确认修改';}}
-}
 async function parseAiAccounting(){
   const text=byId('aiAccountingText').value.trim(),button=byId('aiParseButton'),status=byId('aiAccountingStatus');if(!text){status.textContent='请先输入一句话';status.className='ai-status error';return;}if(!aiSettings.enabled){status.textContent='请先在右侧启用模型配置';status.className='ai-status error';return;}button.disabled=true;button.textContent='识别中…';status.textContent='正在让模型整理字段…';status.className='ai-status';
   try{const {data:sessionData}=await supabaseClient.auth.getSession();const response=await fetch(`${SUPABASE_URL}/functions/v1/ai-accounting`,{method:'POST',headers:{Authorization:`Bearer ${sessionData.session?.access_token||''}`,'Content-Type':'application/json'},body:JSON.stringify({text,conversation_id:assistantConversationId,...assistantModelContext()})});const result=await response.json();if(!response.ok)throw new Error(result.error||'AI识别失败');aiDraft=result;renderAiDraft();status.textContent=`已生成草稿 · ${aiIntentText(result.data?.intent)} · 请确认后填入表单`;status.className='ai-status success';await saveAssistantMessage('assistant',`已生成${aiIntentText(result.data?.intent)}草稿，请确认后再填入表单。`,{intent:result.data?.intent||'unknown'});}catch(error){status.textContent=error.message;status.className='ai-status error';}finally{button.disabled=false;button.textContent='交给 AI 处理';}
@@ -473,6 +440,10 @@ async function loadCloudData({ allowMigration=true, silent=false }={}) {
   if (incomesResult.error) throw incomesResult.error;
   orders = (ordersResult.data || []).map(rowToOrder);
   otherIncomes = (incomesResult.data || []).map(rowToOtherIncome);
+  ledgerAvailable = false; ledgerTransactions = [];
+  const ledgerResult = await supabaseClient.from('ledger_transactions').select('id,order_id,kind,amount,occurred_at,note,source').order('occurred_at', { ascending: false });
+  if (!ledgerResult.error) { ledgerAvailable = true; ledgerTransactions = (ledgerResult.data || []).map(rowToLedgerTransaction); }
+  else if (!['42P01', 'PGRST205'].includes(ledgerResult.error.code) && ledgerResult.error.status !== 404) console.warn('资金流水表暂不可用', ledgerResult.error.message);
   cloudReady = true;
   saveLocalOrders(); saveLocalOtherIncomes();
   setSyncStatus(`云端数据 · ${orders.length} 笔订单`, 'synced');
@@ -515,12 +486,22 @@ function applyRealtimeIncomeChange(payload) {
   }
   saveLocalOtherIncomes(); renderAll();
 }
+function applyRealtimeLedgerChange(payload) {
+  if (!payload?.eventType) return;
+  const row=payload.eventType==='DELETE' ? payload.old : payload.new;
+  if (!row?.id) return;
+  const next=rowToLedgerTransaction(row);
+  if (payload.eventType==='DELETE') ledgerTransactions=ledgerTransactions.filter(item=>item.id!==next.id);
+  else { const index=ledgerTransactions.findIndex(item=>item.id===next.id); if(index>=0)ledgerTransactions[index]=next; else ledgerTransactions.push(next); }
+  ledgerAvailable=true; renderAll();
+}
 async function setupRealtime() {
   if (!supabaseClient || !currentUser) return;
   if (realtimeChannel) await supabaseClient.removeChannel(realtimeChannel);
   realtimeChannel = supabaseClient.channel(`ledger-sync-${currentUser.id}`)
     .on('postgres_changes', { event:'*', schema:'public', table:'orders', filter:`user_id=eq.${currentUser.id}` }, payload => applyRealtimeOrderChange(payload))
     .on('postgres_changes', { event:'*', schema:'public', table:'other_income', filter:`user_id=eq.${currentUser.id}` }, payload => applyRealtimeIncomeChange(payload))
+    .on('postgres_changes', { event:'*', schema:'public', table:'ledger_transactions', filter:`user_id=eq.${currentUser.id}` }, payload => applyRealtimeLedgerChange(payload))
     .subscribe();
 }
 async function handleSession(session, authEvent='') {
@@ -534,7 +515,7 @@ async function handleSession(session, authEvent='') {
   AI_SETTINGS_STORAGE_KEY=aiSettingsStorageKey();
   if (!currentUser) {
     if(accountStatusTimer){clearInterval(accountStatusTimer);accountStatusTimer=null;}
-    currentProfile=null; currentFeatures=new Set(); cloudReady=false; qualityActions={}; qualityActionsCloudAvailable=false; orders=[]; otherIncomes=[]; assistantMemories=[]; assistantMemoryDraft=null; showApprovalUI(false); showAuthenticatedUI(false); setAuthStatus(''); AI_SETTINGS_STORAGE_KEY='qizhang-ai-settings-draft-guest';
+    currentProfile=null; currentFeatures=new Set(); cloudReady=false; ledgerAvailable=false; ledgerTransactions=[]; qualityActions={}; qualityActionsCloudAvailable=false; orders=[]; otherIncomes=[]; assistantMemories=[]; assistantMemoryDraft=null; showApprovalUI(false); showAuthenticatedUI(false); setAuthStatus(''); AI_SETTINGS_STORAGE_KEY='qizhang-ai-settings-draft-guest';
     if (realtimeChannel && supabaseClient) { await supabaseClient.removeChannel(realtimeChannel); realtimeChannel=null; }
     return;
   }
@@ -649,6 +630,13 @@ function sums(list) { return list.reduce((acc, order) => ({ gmv:acc.gmv + Number
 // renderer above is retained for compatibility, then replaced here so partial
 // supplier payments never appear as a full cost payment.
 function transactionRowsWithSplit() {
+  if (ledgerAvailable) {
+    const visibleIds=new Set(dashboardOrders().map(order=>order.id));
+    const kindLabels={customer_receipt:'收款',supplier_payment:'成本付款',commission_receipt:'平台返佣',refund:'退款',direct_cost:'直接费用'};
+    const orderRows=ledgerTransactions.filter(item=>item.orderId&&visibleIds.has(item.orderId)).map(item=>{const order=orders.find(record=>record.id===item.orderId)||{id:item.orderId};return {date:item.date,kind:kindLabels[item.kind]||item.kind,amount:item.amount,party:item.kind==='customer_receipt'?order.customer:order.supplier,note:item.note||kindLabels[item.kind]||'资金流水',order};});
+    const otherRows=otherIncomes.map(item=>{const linked=incomeOrderIds(item).map(id=>orders.find(order=>order.id===id)).filter(Boolean);return [{date:item.date,kind:'其它收入',amount:Number(item.amount||0),party:item.payer||item.name,note:linked.length?`关联 ${linked.map(order=>orderCode(order)).join('、')}`:'未关联订单',order:{id:item.id}},item.expense?{date:item.date,kind:'其它支出',amount:-Number(item.expense),party:item.payee||item.name,note:'其它收入支出',order:{id:item.id}}:null].filter(Boolean)}).flat();
+    return [...orderRows,...otherRows].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  }
   const orderRows = dashboardOrders().flatMap(order => {
     const rows = [];
     if (isCommissionOrder(order)) {
@@ -849,23 +837,6 @@ async function runUnifiedAi(){
   byId('aiDraftPanel').hidden=true;byId('analysisResult').hidden=true;
   return runAssistantChat(text);
 }
-function dataCleaningEntries(){
-  const entries=[];
-  orders.forEach(order=>{
-    const missing=[];
-    if(!order.customer)missing.push('客户');
-    if(!order.serviceDate)missing.push(order.type==='hotel'?'入住日期':'出发日期');
-    if(!order.supplier)missing.push(order.type==='hotel'?'酒店':'航司');
-    if(!order.product)missing.push(order.type==='hotel'?'房型':'航班');
-    if(!order.gmv)missing.push('GMV');
-    if(!isCommissionOrder(order)&&order.gmv&&!Number(order.cost))missing.push('成本金额');
-    if(invoiceStatus(order)==='issued'&&!order.invoiceCompany)missing.push('开票公司');
-    if(missing.length)entries.push({order,kind:'缺失字段',detail:`缺少：${missing.join('、')}`});
-  });
-  const groups={};orders.forEach(order=>{const key=order.confirmation?`确认号：${order.confirmation}`:`${order.customer}|${order.supplier}|${order.serviceDate}|${order.gmv}`;(groups[key] ||= []).push(order);});
-  Object.entries(groups).filter(([,list])=>list.length>1).forEach(([key,list])=>list.forEach(order=>entries.push({order,kind:'疑似重复',detail:`匹配 ${list.length} 笔 · ${key}`})));
-  return entries;
-}
 function serviceDateGap(a,b){const first=Date.parse(`${a||''}T00:00:00`),second=Date.parse(`${b||''}T00:00:00`);return Number.isFinite(first)&&Number.isFinite(second)?Math.abs(first-second)/86400000:null;}
 function dataCleaningEntries(){
   const entries=[];
@@ -885,11 +856,6 @@ function dataCleaningEntries(){
     }));
   });
   return entries.filter((item,index,list)=>list.findIndex(candidate=>candidate.order.id===item.order.id&&candidate.kind===item.kind&&candidate.detail===item.detail)===index);
-}
-function renderDataCleaning(){
-  const result=byId('aiCleaningResults');if(!result)return;const entries=dataCleaningEntries();
-  if(!entries.length){result.innerHTML='<div class="ai-clean-empty">扫描完成，暂未发现缺失字段或疑似重复订单。</div>';return;}
-  result.innerHTML=entries.slice(0,30).map(item=>`<div class="ai-clean-row"><span class="status ${item.kind==='疑似重复'?'partial':'unpaid'}">${escapeHtml(item.kind)}</span><div><b>${escapeHtml(orderCode(item.order))}</b><small>${escapeHtml(item.detail)} · ${escapeHtml(item.order.supplier||'未填写供应商')} · ${escapeHtml(item.order.customer||'未填写客户')}</small></div><button class="button quiet" data-open-order="${escapeHtml(item.order.id)}">查看</button></div>`).join('')+(entries.length>30?`<span class="ai-status">共发现 ${entries.length} 个问题，当前显示前30个。</span>`:'');
 }
 function renderDataCleaning(){
   const result=byId('aiCleaningResults');if(!result)return;const entries=dataCleaningEntries();
@@ -1040,10 +1006,20 @@ document.addEventListener('click', event=>{
   if(event.target.id==='deleteOrder')deleteOrder(event.target.dataset.id);
   if(event.target.id==='migrateLocalData')migrateLocalData();
   if(event.target.id==='signOut')signOut();
-  if(event.target.id==='addPayment'){const order=orders.find(o=>o.id===event.target.dataset.id);if(!order)return;if(isCommissionOrder(order)){const outstanding=commissionOutstanding(order);const value=window.prompt(`请输入本次返佣金额（最多 ${compactCurrency(outstanding)}）`,outstanding);if(value!==null&&!Number.isNaN(Number(value))){order.commissionReceived=Math.min(commissionExpected(order),commissionReceived(order)+Number(value));order.commissionStatus=commissionReceived(order)>=commissionExpected(order)?'received':'partial';order.commissionReceivedDate=today;saveOrder(order).then(()=>{renderAll();openDetails(order.id);}).catch(error=>window.alert(`保存返佣失败：${error.message}`));}}else{const outstanding=order.gmv-order.received;const value=window.prompt(`请输入本次收款金额（最多 ${compactCurrency(outstanding)}）`,outstanding);if(value!==null&&!Number.isNaN(Number(value))){order.received=Math.min(order.gmv,order.received+Number(value));order.paymentStatus=order.received>=order.gmv?'paid':'partial';saveOrder(order).then(()=>{renderAll();openDetails(order.id);}).catch(error=>window.alert(`保存收款失败：${error.message}`));}}}
+  if(event.target.id==='addPayment'){
+    const order=orders.find(o=>o.id===event.target.dataset.id);if(!order)return;
+    if(isCommissionOrder(order)){
+      const outstanding=commissionOutstanding(order),value=window.prompt(`请输入本次返佣金额（最多 ${compactCurrency(outstanding)}）`,outstanding);
+      if(value!==null&&!Number.isNaN(Number(value))){const delta=Math.min(commissionExpected(order),commissionReceived(order)+Number(value))-commissionReceived(order);order.commissionReceived=commissionReceived(order)+delta;order.commissionStatus=commissionReceived(order)>=commissionExpected(order)?'received':'partial';order.commissionReceivedDate=today;saveOrder(order).then(()=>saveLedgerTransaction({orderId:order.id,kind:'commission_receipt',amount:delta,date:today,note:`佣金到账 · ${order.confirmation||orderCode(order)}`})).then(()=>{renderAll();openDetails(order.id);}).catch(error=>window.alert(`保存返佣失败：${error.message}`));}
+    }else{
+      const outstanding=order.gmv-order.received,value=window.prompt(`请输入本次收款金额（最多 ${compactCurrency(outstanding)}）`,outstanding);
+      if(value!==null&&!Number.isNaN(Number(value))){const delta=Math.min(order.gmv,order.received+Number(value))-order.received;order.received+=delta;order.paymentStatus=order.received>=order.gmv?'paid':'partial';saveOrder(order).then(()=>saveLedgerTransaction({orderId:order.id,kind:'customer_receipt',amount:delta,date:today,note:`订单收款 · ${order.confirmation||orderCode(order)}`})).then(()=>{renderAll();openDetails(order.id);}).catch(error=>window.alert(`保存收款失败：${error.message}`));}
+    }
+  }
 });
 byId('calcExpression').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();calculateAndPreview();}});
 byId('excelFile').addEventListener('change',event=>{const [file]=event.target.files;if(file)importExcelFixed(file);});
+document.addEventListener('click',event=>{if(event.target.closest('[data-confirm-import]')){commitPendingImport();return;}if(event.target.closest('[data-cancel-import]')){pendingImport=null;byId('importStatus').textContent='已取消导入预览。';byId('importStatus').classList.remove('success');return;}const revert=event.target.closest('[data-revert-import]');if(revert)revertImportBatch(revert.dataset.revertImport);});
 byId('orderSearch').addEventListener('input',e=>{searchTerm=e.target.value;orderPage=1;renderOrders();});
 byId('dateField').addEventListener('change',e=>{dateField=e.target.value;orderPage=1;renderOrders();});
 byId('dateStart').addEventListener('change',e=>{dateStart=e.target.value;orderPage=1;renderOrders();});
@@ -1086,8 +1062,13 @@ byId('orderForm').addEventListener('submit',async event=>{
   if(requestedSupplierStatus==='unpaid')savedSupplierPaid=0;
   savedSupplierPaid=Math.max(0,Math.min(savedCost,savedSupplierPaid));
   Object.assign(order,{cost:savedCost,received:savedCommission||savedNoFunds?0:received,paymentStatus:savedCommission||savedNoFunds?'not_applicable':paymentStatus,customerPaymentStatus:savedCommission||savedNoFunds?'not_applicable':paymentStatus,supplierPaid:savedSupplierPaid,supplierPaymentStatus:savedCommission||savedNoFunds?'not_required':requestedSupplierStatus});
+  const ledgerChanges=[];const old=previous||{};const addLedgerDelta=(kind,delta,note)=>{if(Math.abs(Number(delta||0))>0.001)ledgerChanges.push({orderId:order.id,kind,amount:Number(delta),date:order.orderDate||order.serviceDate||today,note});};
+  addLedgerDelta('customer_receipt',Number(order.received||0)-Number(old.received||0),`订单收款 · ${order.confirmation||orderCode(order)}`);
+  addLedgerDelta('supplier_payment',-(Number(order.supplierPaid||0)-Number(old.supplierPaid||0)),`供应商结算 · ${order.confirmation||orderCode(order)}`);
+  addLedgerDelta('commission_receipt',Number(order.commissionReceived||0)-Number(old.commissionReceived||0),`佣金到账 · ${order.confirmation||orderCode(order)}`);
+  addLedgerDelta('direct_cost',-(Number(order.directCost||0)-Number(old.directCost||0)),`返佣订单直接费用 · ${order.confirmation||orderCode(order)}`);
   if(existing)Object.assign(existing,order);else orders.unshift(order);
-  try { await saveOrder(order); saveLocalOrders(); delete byId('orderForm').dataset.editId; byId('orderDialog').close(); renderAll(); showView('orders'); openDetails(order.id); }
+  try { await saveOrder(order); for(const change of ledgerChanges)await saveLedgerTransaction(change); saveLocalOrders(); delete byId('orderForm').dataset.editId; byId('orderDialog').close(); renderAll(); showView('orders'); openDetails(order.id); }
   catch(error) { if(existing && previous) Object.assign(existing, previous); else orders=orders.filter(item=>item.id!==order.id); saveLocalOrders(); submitButton.disabled=false; submitButton.textContent=originalSubmitText; window.alert(`保存订单失败：${error.message}`); }
 });
 byId('openOtherIncomeDialog').addEventListener('click',()=>openOtherIncomeForm());
@@ -1097,7 +1078,37 @@ document.addEventListener('click',event=>{const remove=event.target.closest('[da
 ['otherIncomeAmount','otherIncomeExpense'].forEach(id=>byId(id).addEventListener('input',()=>byId('otherIncomeNet').textContent=compactCurrency(Number(byId('otherIncomeAmount').value||0)-Number(byId('otherIncomeExpense').value||0))));
 byId('otherIncomeForm').addEventListener('submit',async event=>{event.preventDefault();const submitButton=byId('otherIncomeForm').querySelector('button[type="submit"],button.primary');if(submitButton.disabled)return;submitButton.disabled=true;const originalSubmitText=submitButton.textContent;submitButton.textContent='保存中…';const editId=byId('otherIncomeForm').dataset.editId;const item={id:editId||`OI-${Date.now()}`,date:byId('otherIncomeDate').value,name:byId('otherIncomeName').value.trim(),payer:byId('otherIncomePayer').value.trim(),payee:byId('otherIncomePayee').value.trim(),orderId:selectedOtherIncomeOrderIds[0]||'',orderIds:[...selectedOtherIncomeOrderIds],amount:Number(byId('otherIncomeAmount').value||0),expense:Number(byId('otherIncomeExpense').value||0)};const index=otherIncomes.findIndex(record=>record.id===editId);if(index>=0)otherIncomes[index]=item;else otherIncomes.unshift(item);try{await saveOtherIncome(item);delete byId('otherIncomeForm').dataset.editId;byId('otherIncomeDialog').close();renderAll();showView('otherIncome');}catch(error){submitButton.disabled=false;submitButton.textContent=originalSubmitText;window.alert(`保存其它收入失败：${error.message}`);}});
 document.addEventListener('click',event=>{const editIncome=event.target.closest('[data-edit-income]');if(editIncome){const item=otherIncomes.find(record=>record.id===editIncome.dataset.editIncome);if(item)openOtherIncomeForm(item);}const deleteIncome=event.target.closest('[data-delete-income]');if(deleteIncome&&window.confirm('确定删除这条其它收入记录吗？')){const id=deleteIncome.dataset.deleteIncome;otherIncomes=otherIncomes.filter(item=>item.id!==id);const removeCloud=cloudReady&&currentUser?supabaseClient.from('other_income').delete().eq('id',id):Promise.resolve({error:null});removeCloud.then(result=>{if(result.error)throw result.error;saveLocalOtherIncomes();renderAll();}).catch(error=>window.alert(`删除失败：${error.message}`));}});
-async function importExcelFixed(file){
+async function commitPendingImport(){
+  if(!pendingImport)return;
+  const {file,found,imported,duplicate}=pendingImport;
+  const status=byId('importStatus');
+  if(duplicate){status.textContent='该文件已经导入过，请先撤回原批次后再导入。';status.classList.remove('success');return;}
+  const confirmButton=status?.querySelector('[data-confirm-import]');if(confirmButton){confirmButton.disabled=true;confirmButton.textContent='正在写入…';}
+  try{
+    const batch=await createImportBatch(file,found.sheetName,imported.length);
+    if(batch?.duplicate){pendingImport={...pendingImport,duplicate:batch.duplicate};renderImportPreview();return;}
+    const prepared=imported.map((order,index)=>({...order,orderCode:batch?.id?`IMP-${batch.id.slice(0,8)}-${String(found.headerRow+2+index).padStart(5,'0')}`:order.orderCode,importBatchId:batch?.id||'',sourceRow:found.headerRow+2+index}));
+    orders=prepared;await saveOrdersBatch();
+    if(batch?.id&&ledgerAvailable){for(const order of prepared){if(order.received)await saveLedgerTransaction({orderId:order.id,kind:'customer_receipt',amount:order.received,date:order.orderDate||order.serviceDate,note:'导入订单收款汇总',source:'import'});if(order.supplierPaid)await saveLedgerTransaction({orderId:order.id,kind:'supplier_payment',amount:-order.supplierPaid,date:order.orderDate||order.serviceDate,note:'导入供应商付款汇总',source:'import'});if(order.commissionReceived)await saveLedgerTransaction({orderId:order.id,kind:'commission_receipt',amount:order.commissionReceived,date:order.commissionReceivedDate||order.orderDate||order.serviceDate,note:'导入平台返佣汇总',source:'import'});}}
+    pendingImport=null;activeType='all';dateField='orderDate';dateStart='';dateEnd='';statusFilter='all';paymentFilter='all';locationFilter='';supplierFilter='';searchTerm='';byId('typeSelect').value='all';byId('dateField').value='orderDate';byId('dateStart').value='';byId('dateEnd').value='';byId('paymentFilter').value='all';byId('locationFilter').value='';byId('supplierFilter').value='';byId('orderSearch').value='';updateStatusOptions();byId('periodSelect').value='all';byId('periodMonth').value=today.slice(0,7);renderAll();status.innerHTML=`已导入 ${prepared.length} 笔订单 · 工作表：${escapeHtml(found.sheetName)} · 文件：${escapeHtml(file.name)}${batch?.id?` · 批次 ${escapeHtml(batch.id)}`:''}`;if(batch?.id)status.innerHTML+=`<button class="button quiet" type="button" data-revert-import="${escapeHtml(batch.id)}">撤回本批次</button>`;status.classList.add('success');showView('orders');window.alert(`已成功导入 ${prepared.length} 笔真实订单。`);
+  }catch(error){status.textContent=`导入失败：${error.message}`;status.classList.remove('success');window.alert(`导入失败：${error.message}`);}
+}
+function renderImportPreview(){
+  const status=byId('importStatus');if(!status||!pendingImport)return;
+  const {file,found,imported,duplicate}=pendingImport;const issues=imported.filter(order=>Array.isArray(order.issues)&&order.issues.length).length;
+  status.className='import-status';status.innerHTML=`<strong>导入预览：</strong>${imported.length} 笔订单 · 工作表：${escapeHtml(found.sheetName)} · 异常行 ${issues} · 文件：${escapeHtml(file.name)}${duplicate?'<br><span>该文件已存在导入批次，不能重复写入；请先撤回原批次。</span>': '<br><span>确认后会写入当前账号，并记录导入批次；请确认文件和账号无误。</span>'}<div class="import-preview-actions"><button class="button quiet" type="button" data-cancel-import>取消</button><button class="button primary" type="button" data-confirm-import ${duplicate?'disabled':''}>确认导入</button></div>`;
+}
+async function revertImportBatch(batchId){
+  if(!batchId||!cloudReady||!currentUser)return;
+  if(!window.confirm('确认撤回这个导入批次吗？该批次订单会从当前账号删除，操作不可恢复。'))return;
+  const batchOrders=orders.filter(order=>order.importBatchId===batchId),ids=batchOrders.map(order=>order.id);
+  try{
+    if(ids.length){const ledgerDelete=ledgerAvailable?await supabaseClient.from('ledger_transactions').delete().in('order_id',ids):{error:null};if(ledgerDelete.error)throw ledgerDelete.error;const orderDelete=await supabaseClient.from('orders').delete().in('id',ids);if(orderDelete.error)throw orderDelete.error;}
+    const result=await supabaseClient.from('import_batches').update({status:'reverted',reverted_at:new Date().toISOString()}).eq('id',batchId).eq('user_id',currentUser.id);if(result.error)throw result.error;
+    await loadCloudData({allowMigration:false});byId('importStatus').textContent=`已撤回导入批次，删除 ${ids.length} 笔订单。`;byId('importStatus').classList.add('success');
+  }catch(error){window.alert(`撤回失败：${error.message}`);}
+}
+async function importExcelPreview(file){
   if(!window.XLSX){window.alert('Excel 解析组件未加载，请检查网络后刷新重试。');return;}
   const button=byId('importExcel');
   button.textContent='正在导入…';
@@ -1142,15 +1153,13 @@ async function importExcelFixed(file){
       cell(row,'order'),cell(row,'service'),cell(row,'location'),cell(row,'supplier'),cell(row,'product'),cell(row,'count'),cell(row,'confirmation'),cell(row,'traveler'),cell(row,'cost'),cell(row,'booker'),cell(row,'invoice'),cell(row,'payment'),cell(row,'paymentPlatform'),null,cell(row,'gmv'),cell(row,'profit')
     ],index)).filter(order=>order.orderDate||order.serviceDate||order.supplier!=='待确认'||order.gmv!==0);
     if(imported.length<1||!imported.some(order=>order.supplier!=='待确认'&&order.gmv>0))throw new Error(`已找到工作表“${found.sheetName}”，但没有识别到有效订单行。`);
-    orders=imported;await saveOrdersBatch();
-    activeType='all';dateField='orderDate';dateStart='';dateEnd='';statusFilter='all';paymentFilter='all';locationFilter='';supplierFilter='';searchTerm='';
-    byId('typeSelect').value='all';byId('dateField').value='orderDate';byId('dateStart').value='';byId('dateEnd').value='';byId('paymentFilter').value='all';byId('locationFilter').value='';byId('supplierFilter').value='';byId('orderSearch').value='';
-    updateStatusOptions();byId('periodSelect').value='all';byId('periodMonth').value=today.slice(0,7);renderAll();showView('orders');
-    byId('importStatus').textContent=`已导入 ${imported.length} 笔订单 · 工作表：${found.sheetName} · 文件：${file.name}`;byId('importStatus').classList.add('success');
-    window.alert(`已成功导入 ${imported.length} 笔真实订单。`);
+    pendingImport={file,found,imported};
+    const batchCheck=await createImportBatch(file,found.sheetName,imported.length,{create:false});pendingImport.duplicate=batchCheck?.duplicate||null;renderImportPreview();
+    return;
   }catch(error){byId('importStatus').textContent=`导入失败：${error.message}`;byId('importStatus').classList.remove('success');window.alert(`导入失败：${error.message}`);}
   finally{button.textContent='导入 Excel';button.disabled=false;byId('excelFile').value='';}
 }
+importExcelFixed=importExcelPreview;
 
 byId('periodSelect').addEventListener('change',()=>{if(byId('periodSelect').value==='current')byId('periodMonth').value=today.slice(0,7);renderAll();});
 byId('periodMonth').addEventListener('change',()=>{if(byId('periodMonth').value)byId('periodSelect').value='custom';renderAll();});
@@ -1362,7 +1371,7 @@ document.addEventListener('click',event=>{if(event.target.closest('[data-confirm
 mountWorkspacePages();
 initApp();
 
-async function loadAssistantConversationData(conversationId){
+async function loadAssistantConversationDataWithPending(conversationId){
   const [messagesResult,contextResult,pendingResult]=await Promise.all([
     supabaseClient.from('assistant_messages').select('id,role,content,metadata,created_at').eq('conversation_id',conversationId).order('created_at',{ascending:false}).limit(100),
     supabaseClient.from('assistant_context').select('*').eq('conversation_id',conversationId).maybeSingle(),
@@ -1380,6 +1389,8 @@ async function loadAssistantConversationData(conversationId){
   renderMemoryList();
   updateAssistantConversationHeader();
 }
+
+loadAssistantConversationData=loadAssistantConversationDataWithPending;
 
 async function requestAssistantAction(mode, actionId){
   const {data:sessionData}=await supabaseClient.auth.getSession();
@@ -1430,9 +1441,8 @@ document.addEventListener('click',event=>{
   const cancel=event.target.closest('[data-cancel-ai-change]');
   if(!cancel)return;
   event.preventDefault();
-  event.stopImmediatePropagation();
   cancelAssistantPendingAction();
-},true);
+});
 
 // Split payment form behavior: the database keeps customer receipt and supplier
 // payment as separate facts, while commission/no-funds settlements hide both.
