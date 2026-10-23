@@ -445,19 +445,6 @@ async function loadCloudData({ allowMigration=true, silent=false }={}) {
   // 多用户模式下禁止登录后自动迁移本地数据，避免把上一个账号的数据上传到当前账号。
   if (!silent) setAuthStatus('已连接云端', 'success');
 }
-async function migrateLocalData() {
-  if (!currentUser || !supabaseClient) return;
-  if (!localOrders.length && !localOtherIncomes.length) { window.alert('当前浏览器没有可上传的本地数据。'); return; }
-  if (!window.confirm(`确认上传本地数据？\n订单：${localOrders.length} 笔\n其它收入：${localOtherIncomes.length} 笔\n\n云端已有同编号记录会更新，不同编号记录会保留。`)) return;
-  cloudBusy = true; setSyncStatus('正在上传本地数据…', 'syncing');
-  try {
-    if (localOrders.length) { orders = localOrders.map(order => ({ ...order })); const { error } = await supabaseClient.from('orders').upsert(orders.map(orderToRow), { onConflict: 'user_id,id' }); if (error) throw error; }
-    if (localOtherIncomes.length) { otherIncomes = localOtherIncomes.map(item => ({ ...item })); const { error } = await supabaseClient.from('other_income').upsert(otherIncomes.map(otherIncomeToRow), { onConflict: 'user_id,id' }); if (error) throw error; }
-    await loadCloudData({ allowMigration:false });
-    window.alert('本地数据已上传到云端。');
-  } catch (error) { setSyncStatus(`上传失败：${error.message}`, 'sync-error'); window.alert(`上传失败：${error.message}`); }
-  finally { cloudBusy=false; }
-}
 function applyRealtimeOrderChange(payload) {
   if (!payload?.eventType) return;
   const row=payload.eventType==='DELETE' ? payload.old : payload.new;
@@ -965,7 +952,6 @@ async function deleteOrder(id){
 function refreshFormPreview(){const type=byId('formType').value;const gmv=Number(byId('gmv').value||0);const cost=Number(byId('cost').value||0);if(type==='hotel'){const rooms=Number(byId('rooms').value||1),nights=Number(byId('nights').value||0);byId('quantityPreview').textContent=`住宿：${rooms} 间 × ${nights} 晚 = ${rooms*nights} 房晚`;}else byId('quantityPreview').textContent=`机票：${Number(byId('tickets').value||0)} 张`;
   byId('profitPreview').textContent=compactCurrency(byId('settlementMode')?.value==='guest_pay_commission'?Number(byId('commissionReceived')?.value||0)-Number(byId('directCost')?.value||0):gmv-cost);
 }
- function syncSettlementFields(){const commission=byId('settlementMode').value==='guest_pay_commission';document.querySelectorAll('.settlement-detail').forEach(el=>el.classList.toggle('hidden',!commission));byId('costLabel').classList.toggle('hidden',commission);byId('paymentStatusLabel').classList.toggle('hidden',commission);byId('paymentPlatformLabel').classList.toggle('hidden',commission);byId('receivedLabel').classList.toggle('hidden',commission);if(commission){byId('paymentStatus').value='not_applicable';byId('received').value=0;byId('cost').value=0;byId('supplierPaymentStatus').value='not_required';byId('supplierPaid').value=0;}byId('quantityPreview').textContent=commission?'客人前台支付 · 平台返佣':byId('quantityPreview').textContent;refreshFormPreview();}
 function evaluateCalculation(expression){const normalized=expression.replaceAll('×','*').replaceAll('÷','/').replaceAll('−','-').replaceAll('，',',').replaceAll(',','').trim();if(!normalized||!/^[0-9+\-*/().\s]+$/.test(normalized))throw new Error('请输入有效的算式');const result=Function(`"use strict"; return (${normalized})`)();if(!Number.isFinite(result))throw new Error('计算结果无效');return Math.round((result+Number.EPSILON)*100)/100;}
 function openCalculator(target){calculatorTarget=target;const input=byId(target);byId('calculatorTitle').textContent=`计算 ${target==='gmv'?'GMV / 售价':target==='cost'?'成本金额':'已收金额'}`;byId('calcExpression').value=input.value||'';byId('calcHint').textContent='支持 + − × ÷ 和括号';byId('calcHint').classList.remove('error');byId('calculatorDialog').showModal();byId('calcExpression').focus();}
 function calculateAndPreview(){try{const result=evaluateCalculation(byId('calcExpression').value);byId('calcExpression').value=String(result);byId('calcHint').textContent=`结果：${compactCurrency(result)}`;byId('calcHint').classList.remove('error');return result;}catch(error){byId('calcHint').textContent=error.message;byId('calcHint').classList.add('error');return null;}}
@@ -1314,7 +1300,6 @@ async function ensureAssistantConversation(){
   if(!conversation){const payload={user_id:currentUser.id,title:'AI 工作台',summary:''};if(assistantConversationStatusSupported)payload.status='active';let result=await supabaseClient.from('assistant_conversations').insert(payload).select('id,title,summary,created_at,updated_at').single();if(result.error&&assistantConversationStatusSupported){assistantConversationStatusSupported=false;result=await supabaseClient.from('assistant_conversations').insert({user_id:currentUser.id,title:'AI 工作台',summary:''}).select('id,title,summary,created_at,updated_at').single();}if(result.error)throw result.error;conversation={...result.data,status:'active'};assistantConversations=[conversation,...assistantConversations];}
   assistantConversationId=conversation.id;localStorage.setItem(assistantConversationStorageKey(),assistantConversationId);updateAssistantConversationHeader();renderAssistantConversationHistory();return true;
 }
-async function loadAssistantConversationData(conversationId){const [messagesResult,contextResult]=await Promise.all([supabaseClient.from('assistant_messages').select('id,role,content,metadata,created_at').eq('conversation_id',conversationId).order('created_at',{ascending:false}).limit(100),supabaseClient.from('assistant_context').select('*').eq('conversation_id',conversationId).maybeSingle()]);if(messagesResult.error)throw messagesResult.error;if(contextResult.error)throw contextResult.error;assistantMessages=(messagesResult.data||[]).reverse();assistantContext={...(contextResult.data||{}),...(contextResult.data?.context||{})};renderAssistantConversation();updateAssistantConversationHeader();}
 async function loadAssistantWorkspace(){assistantWorkspaceAvailable=false;assistantMessages=[];assistantContext={};assistantKnowledge=[];assistantMemories=[];assistantMemoryDraft=null;assistantConversations=[];renderAssistantConversation();renderKnowledgeList();renderMemoryList();if(!cloudReady||!currentUser||!supabaseClient)return;try{await loadAssistantConversations();await ensureAssistantConversation();const {data:knowledge,error}=await supabaseClient.from('assistant_knowledge').select('id,title,category,scope,content,source,status,version,updated_at').order('updated_at',{ascending:false}).limit(50);if(error)throw error;await loadAssistantConversationData(assistantConversationId);assistantKnowledge=knowledge||[];await loadAssistantMemories();assistantWorkspaceAvailable=true;renderAssistantConversation();renderKnowledgeList();renderMemoryList();}catch(error){if(!['42P01','PGRST205'].includes(error?.code)&&error?.status!==404)console.warn('AI workspace data unavailable',error.message);renderAssistantConversation();renderKnowledgeList();renderMemoryList();}}
 async function switchAssistantConversation(id){const conversation=assistantConversations.find(item=>item.id===id);if(!conversation||conversation.status==='archived')return;assistantConversationId=id;localStorage.setItem(assistantConversationStorageKey(),id);assistantMessages=[];assistantContext={};assistantHistoryOpen=false;renderAssistantConversationHistory();await loadAssistantConversationData(id);byId('aiAccountingStatus').textContent='已切换到历史会话';byId('aiAccountingStatus').className='ai-status success';}
 async function createAssistantConversation(){if(!currentUser||!supabaseClient||!cloudReady){window.alert('请先登录云端账户');return;}const payload={user_id:currentUser.id,title:'AI 工作台',summary:''};if(assistantConversationStatusSupported)payload.status='active';let result=await supabaseClient.from('assistant_conversations').insert(payload).select('id,title,summary,created_at,updated_at').single();if(result.error&&assistantConversationStatusSupported){assistantConversationStatusSupported=false;result=await supabaseClient.from('assistant_conversations').insert({user_id:currentUser.id,title:'AI 工作台',summary:''}).select('id,title,summary,created_at,updated_at').single();}if(result.error){window.alert(`新建对话失败：${result.error.message}`);return;}const conversation={...result.data,status:'active'};assistantConversations=[conversation,...assistantConversations];assistantConversationId=conversation.id;localStorage.setItem(assistantConversationStorageKey(),assistantConversationId);assistantMessages=[];assistantContext={};assistantMemoryDraft=null;assistantPendingAction=null;assistantHistoryOpen=false;renderAssistantMemoryDraft(null);renderAssistantConversation();renderAssistantConversationHistory();renderMemoryList();updateAssistantConversationHeader();}
@@ -1325,7 +1310,7 @@ async function saveAssistantMessage(role,content,metadata={}){if(!content)return
 mountWorkspacePages();
 initApp();
 
-async function loadAssistantConversationDataWithPending(conversationId){
+async function loadAssistantConversationData(conversationId){
   const [messagesResult,contextResult,pendingResult]=await Promise.all([
     supabaseClient.from('assistant_messages').select('id,role,content,metadata,created_at').eq('conversation_id',conversationId).order('created_at',{ascending:false}).limit(100),
     supabaseClient.from('assistant_context').select('*').eq('conversation_id',conversationId).maybeSingle(),
@@ -1343,8 +1328,6 @@ async function loadAssistantConversationDataWithPending(conversationId){
   renderMemoryList();
   updateAssistantConversationHeader();
 }
-
-loadAssistantConversationData=loadAssistantConversationDataWithPending;
 
 async function requestAssistantAction(mode, actionId){
   const {data:sessionData}=await supabaseClient.auth.getSession();
@@ -1393,7 +1376,7 @@ async function cancelAssistantPendingAction(){
 
 // Split payment form behavior: the database keeps customer receipt and supplier
 // payment as separate facts, while commission/no-funds settlements hide both.
-syncSettlementFields = function syncSplitSettlementFields(){
+function syncSettlementFields(){
   const mode=byId('settlementMode').value;
   const commission=mode==='guest_pay_commission';
   const noFunds=mode==='no_funds';
@@ -1425,7 +1408,7 @@ openEditOrder = function openEditOrderWithSplitFields(id){
   syncSettlementFields();
 };
 
-migrateLocalData = async function migrateScopedLocalData(){
+async function migrateLocalData(){
   if(!currentUser||!supabaseClient||!canFeature('orders.import')){window.alert('当前账号没有导入数据权限');return;}
   const parse=(key,fallback)=>{try{const value=JSON.parse(localStorage.getItem(key)||'null');return Array.isArray(value)?value:fallback;}catch{return fallback;}};
   const scopedOrders=parse(userStorageKey('qizhang-orders'),[]), legacyOrders=parse('qizhang-orders',[]);
