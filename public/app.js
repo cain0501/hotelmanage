@@ -689,7 +689,7 @@ function renderCityDistribution() {
 }
 function renderRecentLedger() { byId('recentLedger').innerHTML=transactionRows().slice(0,4).map(row=>`<div class="mini-ledger-row"><div><p>${escapeHtml(row.kind)} · ${escapeHtml(row.party||'')}</p><small>${dateFmt(row.date)} · ${escapeHtml(row.order.id)}</small></div><strong class="amount ${row.amount>=0?'income':'expense'}">${row.amount>=0?'+':'−'}${compactCurrency(Math.abs(row.amount))}</strong></div>`).join('') || '<div class="empty-state">暂无资金流水</div>'; }
 
-function renderOrders() {
+function renderOrdersBase() {
   const list=filteredOrders().sort((a,b)=>((b[dateField] || b.orderDate || b.serviceDate || '')).localeCompare(a[dateField] || a.orderDate || a.serviceDate || ''));
   const pageCount=Math.ceil(list.length/ORDER_PAGE_SIZE); orderPage=Math.min(orderPage,pageCount||1);
   const pageList=list.slice((orderPage-1)*ORDER_PAGE_SIZE,orderPage*ORDER_PAGE_SIZE);
@@ -1130,9 +1130,8 @@ byId('knowledgeForm').addEventListener('submit',saveKnowledgeDraft);
 byId('scanDataQuality').addEventListener('click',()=>{byId('aiCleaningResults').innerHTML='<span class="ai-status">正在扫描订单字段和重复记录…</span>';setTimeout(renderDataCleaning,0);});
 byId('previewCleanup').addEventListener('click',renderCleanupPreview);
 document.querySelectorAll('[data-ai-example]').forEach(button=>button.addEventListener('click',()=>{byId('aiAccountingText').value=button.dataset.aiExample;byId('aiAccountingText').focus();}));
-const renderOrdersOriginal = renderOrders;
-renderOrders = function renderOrdersWithVisibleActions(){
-  renderOrdersOriginal();
+function renderOrders(){
+  renderOrdersBase();
   document.querySelectorAll('#mobileOrderList article[data-detail]').forEach(card=>{
     const order=orders.find(item=>item.id===card.dataset.detail);
     if(!order)return;
@@ -1395,7 +1394,7 @@ function syncSettlementFields(){
   }
   byId('quantityPreview').textContent=commission?'\u5ba2\u4eba\u524d\u53f0\u652f\u4ed8 \u00b7 \u5e73\u53f0\u8fd4\u4f63':byId('quantityPreview').textContent;
   refreshFormPreview();
-};
+}
 
 const openEditOrderSplit = openEditOrder;
 openEditOrder = function openEditOrderWithSplitFields(id){
