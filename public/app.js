@@ -79,12 +79,6 @@ let ledgerAvailable = false;
 let pendingImport = null;
 
 const byId = id => document.getElementById(id);
-document.addEventListener('click', event=>{
-  const deleteTrigger=event.target.closest('[data-delete-order]');
-  if(deleteTrigger){event.preventDefault();event.stopImmediatePropagation();deleteOrder(deleteTrigger.dataset.deleteOrder);return;}
-  const openTrigger=event.target.closest('[data-open-order]');
-  if(openTrigger){event.preventDefault();event.stopImmediatePropagation();openDetails(openTrigger.dataset.openOrder);}
-});
 const SUPABASE_URL = 'https://onomizgpzhqrmiuqeikf.supabase.co';
 // Publishable key 只能用于浏览器端，RLS 才是数据安全边界；不要替换成 service_role key。
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_PfLkfwLJTSGCIchlm3_xiQ_LuLj_JOC';
@@ -986,40 +980,8 @@ async function importExcel(file){if(!window.XLSX){window.alert('Excel 解析组�
 async function importExcelFixed(file){if(!window.XLSX){window.alert('Excel 解析组件未加载，请检查网络后刷新重试。');return;}const button=byId('importExcel');button.textContent='正在导入…';button.disabled=true;try{const workbook=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true});const sheet=workbook.Sheets[workbook.SheetNames[0]];const matrix=XLSX.utils.sheet_to_json(sheet,{header:1,defval:null,raw:true});const imported=matrix.slice(1).filter(row=>Array.isArray(row)&&row.some(value=>value!==null&&value!=='')) .map(mapExcelRow).filter(order=>order.orderDate||order.serviceDate||order.supplier!=='待确认'||order.gmv!==0);if(imported.length<10||!imported.some(order=>order.supplier!=='待确认'&&order.gmv>0))throw new Error('没有识别到“酒店销售”订单数据，请确认选择的是导出的订单汇总文件。');orders=imported;await saveOrdersBatch();renderAll();showView('orders');byId('importStatus').textContent=`已导入 ${imported.length} 笔订单 · 来源：${file.name} · 真实数据已替换本地示例`;byId('importStatus').classList.add('success');window.alert(`已成功导入 ${imported.length} 笔真实订单。`);}catch(error){byId('importStatus').textContent=`导入失败：${error.message}`;byId('importStatus').classList.remove('success');window.alert(`导入失败：${error.message}`);}finally{button.textContent='导入 Excel';button.disabled=false;byId('excelFile').value='';}}
 function openEditOrder(id){const o=orders.find(order=>order.id===id);if(!o)return;byId('detailDialog').close();byId('orderForm').dataset.editId=id;byId('orderForm').dataset.saving='false';byId('formKicker').textContent=`EDIT ORDER · ${id}`;byId('formHeading').textContent='编辑订单';byId('formSubmit').disabled=false;byId('formSubmit').textContent='保存修改';setOrderType(o.type);byId('orderStatus').value=o.status|| (o.type==='hotel'?'booked':'pending');byId('customer').value=o.customer||'';byId('booker').value=o.booker||'';byId('orderDate').value=o.orderDate||o.serviceDate||today;byId('serviceDate').value=o.serviceDate||today;byId('confirmation').value=o.confirmation||'';byId('location').value=o.location||'';byId('supplier').value=o.supplier||'';byId('product').value=o.product||'';byId('rooms').value=o.rooms||1;byId('nights').value=o.nights||1;byId('tickets').value=o.tickets||1;byId('gmv').value=o.gmv||0;byId('cost').value=o.cost||0;byId('settlementMode').value=settlementMode(o);byId('guestPaymentTo').value=o.guestPaymentTo||'';byId('commissionPlatform').value=o.commissionPlatform||'';byId('commissionExpected').value=commissionExpected(o)||'';byId('commissionReceived').value=commissionReceived(o)||'';byId('commissionStatus').value=commissionStatus(o);byId('commissionReceivedDate').value=o.commissionReceivedDate||'';byId('directCost').value=directCost(o)||'';byId('paymentStatus').value=payment(o);byId('paymentPlatform').value=o.paymentPlatform||'';byId('received').value=o.received||0;byId('invoiceStatus').value=invoiceStatus(o);byId('invoiceCompany').value=o.invoiceCompany||'';syncSettlementFields();refreshFormPreview();byId('orderDialog').showModal();}
 
-document.addEventListener('click', event=>{
-  const qualityAction=event.target.closest('[data-quality-action]'); if(qualityAction){event.preventDefault();event.stopImmediatePropagation();setQualityAction(qualityAction.dataset.qualityOrder,qualityAction.dataset.qualityKind,qualityAction.dataset.qualityAction);return;}
-  const nav=event.target.closest('[data-view]'); if(nav)showView(nav.dataset.view);
-  const go=event.target.closest('[data-go]'); if(go)showView(go.dataset.go);
-  const detail=event.target.closest('[data-detail]'); if(detail && !detail.closest('#orderTable') && !detail.closest('#mobileOrderList'))openDetails(detail.dataset.detail);
-  const close=event.target.closest('[data-close]'); if(close)byId(close.dataset.close).close();
-  const page=event.target.closest('[data-order-page]'); if(page&&!page.disabled){orderPage=Number(page.dataset.orderPage);renderOrders();}
-  const type=event.target.closest('[data-order-type]'); if(type)setOrderType(type.dataset.orderType);
-  const filter=event.target.closest('[data-type-filter]'); if(filter){activeType=filter.dataset.typeFilter;orderPage=1;document.querySelectorAll('[data-type-filter]').forEach(b=>b.classList.toggle('selected',b===filter));renderOrders();}
-  const calcTrigger=event.target.closest('[data-calc-for]'); if(calcTrigger)openCalculator(calcTrigger.dataset.calcFor);
-  const calcKey=event.target.closest('[data-calc-key]'); if(calcKey){const input=byId('calcExpression'),key=calcKey.dataset.calcKey;if(key==='C')input.value='';else if(key==='?')input.value=input.value.slice(0,-1);else input.value+=key;byId('calcHint').textContent='支持 + − × ÷ 和括号';byId('calcHint').classList.remove('error');}
-  if(event.target.id==='calcEquals')calculateAndPreview();
-  if(event.target.id==='applyCalculation'){const result=calculateAndPreview();if(result!==null&&calculatorTarget){byId(calculatorTarget).value=String(result);refreshFormPreview();byId('calculatorDialog').close();}}
-  if(event.target.id==='clearFilters'){activeType='all';searchTerm='';orderPage=1;byId('orderSearch').value='';document.querySelectorAll('[data-type-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.typeFilter==='all'));renderOrders();}
-  if(event.target.id==='importExcel')byId('excelFile').click();
-  if(event.target.id==='openOrderDialog'){byId('orderForm').reset();delete byId('orderForm').dataset.editId;byId('orderForm').dataset.saving='false';byId('formKicker').textContent='NEW TRANSACTION';byId('formHeading').textContent='新增订单';byId('formSubmit').disabled=false;byId('formSubmit').textContent='保存订单';byId('orderDate').value=today;byId('serviceDate').value=today;byId('paymentStatus').value='paid';byId('settlementMode').value='agency_pay';syncSettlementFields();setOrderType('hotel');byId('orderStatus').value='booked';byId('orderDialog').showModal();}
-  if(event.target.id==='editOrder')openEditOrder(event.target.dataset.id);
-  if(event.target.id==='deleteOrder')deleteOrder(event.target.dataset.id);
-  if(event.target.id==='migrateLocalData')migrateLocalData();
-  if(event.target.id==='signOut')signOut();
-  if(event.target.id==='addPayment'){
-    const order=orders.find(o=>o.id===event.target.dataset.id);if(!order)return;
-    if(isCommissionOrder(order)){
-      const outstanding=commissionOutstanding(order),value=window.prompt(`请输入本次返佣金额（最多 ${compactCurrency(outstanding)}）`,outstanding);
-      if(value!==null&&!Number.isNaN(Number(value))){const delta=Math.min(commissionExpected(order),commissionReceived(order)+Number(value))-commissionReceived(order);order.commissionReceived=commissionReceived(order)+delta;order.commissionStatus=commissionReceived(order)>=commissionExpected(order)?'received':'partial';order.commissionReceivedDate=today;saveOrder(order).then(()=>saveLedgerTransaction({orderId:order.id,kind:'commission_receipt',amount:delta,date:today,note:`佣金到账 · ${order.confirmation||orderCode(order)}`})).then(()=>{renderAll();openDetails(order.id);}).catch(error=>window.alert(`保存返佣失败：${error.message}`));}
-    }else{
-      const outstanding=order.gmv-order.received,value=window.prompt(`请输入本次收款金额（最多 ${compactCurrency(outstanding)}）`,outstanding);
-      if(value!==null&&!Number.isNaN(Number(value))){const delta=Math.min(order.gmv,order.received+Number(value))-order.received;order.received+=delta;order.paymentStatus=order.received>=order.gmv?'paid':'partial';saveOrder(order).then(()=>saveLedgerTransaction({orderId:order.id,kind:'customer_receipt',amount:delta,date:today,note:`订单收款 · ${order.confirmation||orderCode(order)}`})).then(()=>{renderAll();openDetails(order.id);}).catch(error=>window.alert(`保存收款失败：${error.message}`));}
-    }
-  }
-});
 byId('calcExpression').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();calculateAndPreview();}});
 byId('excelFile').addEventListener('change',event=>{const [file]=event.target.files;if(file)importExcelFixed(file);});
-document.addEventListener('click',event=>{if(event.target.closest('[data-confirm-import]')){commitPendingImport();return;}if(event.target.closest('[data-cancel-import]')){pendingImport=null;byId('importStatus').textContent='已取消导入预览。';byId('importStatus').classList.remove('success');return;}const revert=event.target.closest('[data-revert-import]');if(revert)revertImportBatch(revert.dataset.revertImport);});
 byId('orderSearch').addEventListener('input',e=>{searchTerm=e.target.value;orderPage=1;renderOrders();});
 byId('dateField').addEventListener('change',e=>{dateField=e.target.value;orderPage=1;renderOrders();});
 byId('dateStart').addEventListener('change',e=>{dateStart=e.target.value;orderPage=1;renderOrders();});
@@ -1030,8 +992,8 @@ byId('paymentFilter').addEventListener('change',e=>{paymentFilter=e.target.value
 byId('invoiceFilter').addEventListener('change',e=>{invoiceFilter=e.target.value;});
 byId('locationFilter').addEventListener('input',e=>{locationFilter=e.target.value;});
 byId('supplierFilter').addEventListener('input',e=>{supplierFilter=e.target.value;});
-byId('applyFilters').addEventListener('click',()=>{dateField=byId('dateField').value;dateStart=byId('dateStart').value;dateEnd=byId('dateEnd').value;activeType=byId('typeSelect').value;statusFilter=byId('statusFilter').value;paymentFilter=byId('paymentFilter').value;invoiceFilter=byId('invoiceFilter').value;locationFilter=byId('locationFilter').value.trim();supplierFilter=byId('supplierFilter').value.trim();searchTerm=byId('orderSearch').value.trim();orderPage=1;renderOrders();byId('applyFilters').classList.add('filter-applied');setTimeout(()=>byId('applyFilters').classList.remove('filter-applied'),450);});
-byId('clearFilters').addEventListener('click',()=>{activeType='all';dateField='orderDate';dateStart='';dateEnd='';statusFilter='all';paymentFilter='all';invoiceFilter='all';locationFilter='';supplierFilter='';searchTerm='';orderPage=1;byId('typeSelect').value='all';byId('dateField').value='orderDate';byId('dateStart').value='';byId('dateEnd').value='';byId('paymentFilter').value='all';byId('invoiceFilter').value='all';byId('locationFilter').value='';byId('supplierFilter').value='';byId('orderSearch').value='';updateStatusOptions();renderOrders();});
+byId('applyFilters').addEventListener('click',()=>{dateField=byId('dateField').value;dateStart=byId('dateStart').value;dateEnd=byId('dateEnd').value;activeType=byId('typeSelect').value;statusFilter=byId('statusFilter').value;paymentFilter=byId('paymentFilter').value;supplierPaymentFilter=byId('supplierPaymentFilter').value;invoiceFilter=byId('invoiceFilter').value;locationFilter=byId('locationFilter').value.trim();supplierFilter=byId('supplierFilter').value.trim();searchTerm=byId('orderSearch').value.trim();orderPage=1;renderOrders();byId('applyFilters').classList.add('filter-applied');setTimeout(()=>byId('applyFilters').classList.remove('filter-applied'),450);});
+byId('clearFilters').addEventListener('click',()=>{activeType='all';dateField='orderDate';dateStart='';dateEnd='';statusFilter='all';paymentFilter='all';supplierPaymentFilter='all';invoiceFilter='all';locationFilter='';supplierFilter='';searchTerm='';orderPage=1;byId('typeSelect').value='all';byId('dateField').value='orderDate';byId('dateStart').value='';byId('dateEnd').value='';byId('paymentFilter').value='all';byId('supplierPaymentFilter').value='all';byId('invoiceFilter').value='all';byId('locationFilter').value='';byId('supplierFilter').value='';byId('orderSearch').value='';updateStatusOptions();renderOrders();});
 byId('qualityIssueFilter').addEventListener('change',event=>{qualityIssueFilter=event.target.value;renderQuality();});
 byId('qualityStatusFilter').addEventListener('change',event=>{qualityStatusFilter=event.target.value;renderQuality();});
 byId('qualityTypeFilter').addEventListener('change',event=>{qualityTypeFilter=event.target.value;renderQuality();});
@@ -1074,10 +1036,8 @@ byId('orderForm').addEventListener('submit',async event=>{
 byId('openOtherIncomeDialog').addEventListener('click',()=>openOtherIncomeForm());
 byId('otherIncomeOrderSearch').addEventListener('input',renderOtherIncomeOrderPicker);
 document.addEventListener('change',event=>{const checkbox=event.target.closest('[data-income-order]');if(!checkbox)return;const id=checkbox.dataset.incomeOrder;if(checkbox.checked){if(!selectedOtherIncomeOrderIds.includes(id))selectedOtherIncomeOrderIds.push(id);}else selectedOtherIncomeOrderIds=selectedOtherIncomeOrderIds.filter(orderId=>orderId!==id);renderOtherIncomeOrderPicker();});
-document.addEventListener('click',event=>{const remove=event.target.closest('[data-remove-income-order]');if(remove){selectedOtherIncomeOrderIds=selectedOtherIncomeOrderIds.filter(id=>id!==remove.dataset.removeIncomeOrder);renderOtherIncomeOrderPicker();}});
 ['otherIncomeAmount','otherIncomeExpense'].forEach(id=>byId(id).addEventListener('input',()=>byId('otherIncomeNet').textContent=compactCurrency(Number(byId('otherIncomeAmount').value||0)-Number(byId('otherIncomeExpense').value||0))));
 byId('otherIncomeForm').addEventListener('submit',async event=>{event.preventDefault();const submitButton=byId('otherIncomeForm').querySelector('button[type="submit"],button.primary');if(submitButton.disabled)return;submitButton.disabled=true;const originalSubmitText=submitButton.textContent;submitButton.textContent='保存中…';const editId=byId('otherIncomeForm').dataset.editId;const item={id:editId||`OI-${Date.now()}`,date:byId('otherIncomeDate').value,name:byId('otherIncomeName').value.trim(),payer:byId('otherIncomePayer').value.trim(),payee:byId('otherIncomePayee').value.trim(),orderId:selectedOtherIncomeOrderIds[0]||'',orderIds:[...selectedOtherIncomeOrderIds],amount:Number(byId('otherIncomeAmount').value||0),expense:Number(byId('otherIncomeExpense').value||0)};const index=otherIncomes.findIndex(record=>record.id===editId);if(index>=0)otherIncomes[index]=item;else otherIncomes.unshift(item);try{await saveOtherIncome(item);delete byId('otherIncomeForm').dataset.editId;byId('otherIncomeDialog').close();renderAll();showView('otherIncome');}catch(error){submitButton.disabled=false;submitButton.textContent=originalSubmitText;window.alert(`保存其它收入失败：${error.message}`);}});
-document.addEventListener('click',event=>{const editIncome=event.target.closest('[data-edit-income]');if(editIncome){const item=otherIncomes.find(record=>record.id===editIncome.dataset.editIncome);if(item)openOtherIncomeForm(item);}const deleteIncome=event.target.closest('[data-delete-income]');if(deleteIncome&&window.confirm('确定删除这条其它收入记录吗？')){const id=deleteIncome.dataset.deleteIncome;otherIncomes=otherIncomes.filter(item=>item.id!==id);const removeCloud=cloudReady&&currentUser?supabaseClient.from('other_income').delete().eq('id',id):Promise.resolve({error:null});removeCloud.then(result=>{if(result.error)throw result.error;saveLocalOtherIncomes();renderAll();}).catch(error=>window.alert(`删除失败：${error.message}`));}});
 async function commitPendingImport(){
   if(!pendingImport)return;
   const {file,found,imported,duplicate}=pendingImport;
@@ -1182,12 +1142,9 @@ byId('memoryForm')?.addEventListener('submit',saveManualMemory);
  byId('aiProvider').addEventListener('change',event=>{if(event.target.value==='deepseek'){byId('aiBaseUrl').value='https://api.deepseek.com';if(!byId('aiModel').value||byId('aiModel').value==='gpt-4o-mini')byId('aiModel').value='deepseek-flash';}else if(event.target.value==='openai-compatible'){byId('aiBaseUrl').value='https://api.openai.com/v1';if(byId('aiModel').value==='deepseek-flash')byId('aiModel').value='gpt-4o-mini';}else{byId('aiBaseUrl').value='';}});
 byId('aiParseButton').addEventListener('click',runUnifiedAi);
 byId('aiFillButton').addEventListener('click',fillFromAiDraft);
-document.addEventListener('click',event=>{if(event.target.closest('[data-confirm-ai-change]')){event.preventDefault();confirmAssistantPendingAction();}if(event.target.closest('[data-cancel-ai-change]')){event.preventDefault();clearPendingAction();byId('aiAccountingStatus').textContent='已取消批量修改，未改变任何订单。';byId('aiAccountingStatus').className='ai-status';}});
 byId('knowledgeForm').addEventListener('submit',saveKnowledgeDraft);
-document.addEventListener('click',event=>{const action=event.target.closest('[data-knowledge-action]');if(!action)return;updateKnowledgeStatus(action.dataset.knowledgeId,action.dataset.knowledgeAction==='publish'?'published':'archived');});
 byId('scanDataQuality').addEventListener('click',()=>{byId('aiCleaningResults').innerHTML='<span class="ai-status">正在扫描订单字段和重复记录…</span>';setTimeout(renderDataCleaning,0);});
 byId('previewCleanup').addEventListener('click',renderCleanupPreview);
-document.addEventListener('click',event=>{if(event.target.closest('[data-confirm-cleanup]'))confirmCleanup();});
 document.querySelectorAll('[data-ai-example]').forEach(button=>button.addEventListener('click',()=>{byId('aiAccountingText').value=button.dataset.aiExample;byId('aiAccountingText').focus();}));
 const renderOrdersOriginal = renderOrders;
 renderOrders = function renderOrdersWithVisibleActions(){
@@ -1367,7 +1324,6 @@ async function clearAssistantConversation(){if(!assistantConversationId)return;i
 async function archiveAssistantConversation(){if(!assistantConversationId)return;if(!assistantConversationStatusSupported){window.alert('请先在 Supabase 执行 supabase/assistant-conversations-migration.sql，再使用归档功能。');return;}if(!window.confirm('确认归档当前对话吗？归档后会自动新建一个空白对话。'))return;const archivedAt=new Date().toISOString();const {error}=await supabaseClient.from('assistant_conversations').update({status:'archived',archived_at:archivedAt}).eq('id',assistantConversationId).eq('user_id',currentUser.id);if(error){window.alert(`归档失败：${error.message}`);return;}assistantConversations=assistantConversations.map(item=>item.id===assistantConversationId?{...item,status:'archived',archived_at:archivedAt}:item);await createAssistantConversation();}
 async function restoreAssistantConversation(id){if(!assistantConversationStatusSupported)return;const {error}=await supabaseClient.from('assistant_conversations').update({status:'active',archived_at:null}).eq('id',id).eq('user_id',currentUser.id);if(error){window.alert(`恢复失败：${error.message}`);return;}assistantConversations=assistantConversations.map(item=>item.id===id?{...item,status:'active',archived_at:null}:item);await switchAssistantConversation(id);}
 async function saveAssistantMessage(role,content,metadata={}){if(!content)return;const record={role,content:String(content),metadata,created_at:new Date().toISOString()};assistantMessages=[...assistantMessages.slice(-99),record];renderAssistantConversation();if(!assistantWorkspaceAvailable||!assistantConversationId||!currentUser||!supabaseClient)return;const {error}=await supabaseClient.from('assistant_messages').insert({user_id:currentUser.id,conversation_id:assistantConversationId,role,content:String(content),metadata});if(error){console.warn('AI message save failed',error.message);return;}const {data:oldMessages}=await supabaseClient.from('assistant_messages').select('id').eq('conversation_id',assistantConversationId).order('created_at',{ascending:false}).range(100,1000);if(oldMessages?.length)await supabaseClient.from('assistant_messages').delete().in('id',oldMessages.map(item=>item.id)).eq('user_id',currentUser.id);}
-document.addEventListener('click',event=>{if(event.target.closest('[data-confirm-memory]')){confirmAssistantMemory();return;}if(event.target.closest('[data-cancel-memory]')){renderAssistantMemoryDraft(null);byId('aiAccountingStatus').textContent='已取消保存记忆';byId('aiAccountingStatus').className='ai-status';return;}const memoryAction=event.target.closest('[data-memory-action]');if(memoryAction){updateMemoryRecord(memoryAction.dataset.memoryId,memoryAction.dataset.memoryAction);return;}if(event.target.closest('#newAssistantConversation')){createAssistantConversation();return;}if(event.target.closest('#toggleAssistantHistory')){assistantHistoryOpen=!assistantHistoryOpen;renderAssistantConversationHistory();return;}if(event.target.closest('#archiveAssistantConversation')){archiveAssistantConversation();return;}if(event.target.closest('#clearAssistantConversation')){clearAssistantConversation();return;}const open=event.target.closest('[data-open-assistant-conversation]');if(open){switchAssistantConversation(open.dataset.openAssistantConversation);return;}const restore=event.target.closest('[data-restore-assistant-conversation]');if(restore){restoreAssistantConversation(restore.dataset.restoreAssistantConversation);return;}});
 mountWorkspacePages();
 initApp();
 
@@ -1437,13 +1393,6 @@ async function cancelAssistantPendingAction(){
   }
 }
 
-document.addEventListener('click',event=>{
-  const cancel=event.target.closest('[data-cancel-ai-change]');
-  if(!cancel)return;
-  event.preventDefault();
-  cancelAssistantPendingAction();
-});
-
 // Split payment form behavior: the database keeps customer receipt and supplier
 // payment as separate facts, while commission/no-funds settlements hide both.
 syncSettlementFields = function syncSplitSettlementFields(){
@@ -1478,14 +1427,6 @@ openEditOrder = function openEditOrderWithSplitFields(id){
   syncSettlementFields();
 };
 
-document.addEventListener('click',event=>{
-  if(event.target.id!=='openOrderDialog')return;
-  byId('paymentStatus').value='paid';
-  byId('supplierPaymentStatus').value='unknown';
-  byId('supplierPaid').value=0;
-  syncSettlementFields();
-});
-
 migrateLocalData = async function migrateScopedLocalData(){
   if(!currentUser||!supabaseClient||!canFeature('orders.import')){window.alert('当前账号没有导入数据权限');return;}
   const parse=(key,fallback)=>{try{const value=JSON.parse(localStorage.getItem(key)||'null');return Array.isArray(value)?value:fallback;}catch{return fallback;}};
@@ -1502,27 +1443,6 @@ migrateLocalData = async function migrateScopedLocalData(){
   }catch(error){setSyncStatus(`上传失败：${error.message}`,'sync-error');window.alert(`上传失败：${error.message}`);}
   finally{cloudBusy=false;}
 };
-
-document.addEventListener('click',event=>{
-  if(event.target.id==='applyFilters'){
-    supplierPaymentFilter=byId('supplierPaymentFilter').value;
-    orderPage=1;
-    renderOrders();
-  }
-  if(event.target.id==='clearFilters'){
-    supplierPaymentFilter='all';
-    byId('supplierPaymentFilter').value='all';
-    renderOrders();
-  }
-});
-
-// The legacy quick-payment action still writes paymentStatus. Clear the split
-// field before it runs so orderToRow safely falls back to the updated value.
-document.addEventListener('click',event=>{
-  if(event.target.id!=='addPayment')return;
-  const order=orders.find(item=>item.id===event.target.dataset.id);
-  if(order&&!isCommissionOrder(order))order.customerPaymentStatus=null;
-},true);
 
 document.addEventListener('change',event=>{
   if(event.target.id==='excelFile'){
@@ -1665,12 +1585,108 @@ document.addEventListener('submit',event=>{
   if(keywords)byId('knowledgeScopeText').value=[scope,'标签：'+keywords].filter(Boolean).join(' / ');
 },true);
 
-document.addEventListener('click',event=>{
-  const statusButton=event.target.closest('[data-admin-status]');if(statusButton){updateAdminUserStatus(statusButton.dataset.adminUser,statusButton.dataset.adminStatus);return;}
-  const permissionButton=event.target.closest('[data-admin-permissions]');if(permissionButton){openAdminPermissions(permissionButton.dataset.adminPermissions);return;}
-  if(event.target.id==='refreshAdminUsers')loadAdminUsers();
-  if(event.target.id==='closeAdminPermission'){byId('adminPermissionPanel').hidden=true;selectedAdminUserId=null;}
-  if(event.target.id==='saveAdminPermissions')saveAdminPermissions();
-  if(event.target.id==='approvalSignOut')signOut();
-  if(event.target.id==='approvalRefresh'){lastHandledSessionKey=null;handleSession({user:currentUser});}
-});
+function handleDocumentClick(event){
+  const target=event.target instanceof Element?event.target:event.target?.parentElement;
+  if(!target)return;
+  const closest=selector=>target.closest(selector);
+
+  const deleteTrigger=closest('[data-delete-order]');
+  if(deleteTrigger){event.preventDefault();deleteOrder(deleteTrigger.dataset.deleteOrder);return;}
+  const openTrigger=closest('[data-open-order]');
+  if(openTrigger){event.preventDefault();openDetails(openTrigger.dataset.openOrder);return;}
+
+  const qualityAction=closest('[data-quality-action]');
+  if(qualityAction){event.preventDefault();setQualityAction(qualityAction.dataset.qualityOrder,qualityAction.dataset.qualityKind,qualityAction.dataset.qualityAction);return;}
+  const importConfirm=closest('[data-confirm-import]');
+  if(importConfirm){commitPendingImport();return;}
+  const importCancel=closest('[data-cancel-import]');
+  if(importCancel){pendingImport=null;byId('importStatus').textContent='已取消导入预览。';byId('importStatus').classList.remove('success');return;}
+  const importRevert=closest('[data-revert-import]');
+  if(importRevert){revertImportBatch(importRevert.dataset.revertImport);return;}
+
+  const removeIncomeOrder=closest('[data-remove-income-order]');
+  if(removeIncomeOrder){selectedOtherIncomeOrderIds=selectedOtherIncomeOrderIds.filter(id=>id!==removeIncomeOrder.dataset.removeIncomeOrder);renderOtherIncomeOrderPicker();return;}
+  const editIncome=closest('[data-edit-income]');
+  if(editIncome){const item=otherIncomes.find(record=>record.id===editIncome.dataset.editIncome);if(item)openOtherIncomeForm(item);return;}
+  const deleteIncome=closest('[data-delete-income]');
+  if(deleteIncome){
+    if(!window.confirm('确定删除这条其它收入记录吗？'))return;
+    const id=deleteIncome.dataset.deleteIncome;otherIncomes=otherIncomes.filter(item=>item.id!==id);
+    const removeCloud=cloudReady&&currentUser?supabaseClient.from('other_income').delete().eq('id',id):Promise.resolve({error:null});
+    removeCloud.then(result=>{if(result.error)throw result.error;saveLocalOtherIncomes();renderAll();}).catch(error=>window.alert(`删除失败：${error.message}`));
+    return;
+  }
+
+  const confirmAiChange=closest('[data-confirm-ai-change]');
+  if(confirmAiChange){event.preventDefault();confirmAssistantPendingAction();return;}
+  const cancelAiChange=closest('[data-cancel-ai-change]');
+  if(cancelAiChange){event.preventDefault();cancelAssistantPendingAction();return;}
+  const knowledgeAction=closest('[data-knowledge-action]');
+  if(knowledgeAction){updateKnowledgeStatus(knowledgeAction.dataset.knowledgeId,knowledgeAction.dataset.knowledgeAction==='publish'?'published':'archived');return;}
+  if(closest('[data-confirm-cleanup]')){confirmCleanup();return;}
+
+  if(closest('[data-confirm-memory]')){confirmAssistantMemory();return;}
+  if(closest('[data-cancel-memory]')){renderAssistantMemoryDraft(null);byId('aiAccountingStatus').textContent='已取消保存记忆';byId('aiAccountingStatus').className='ai-status';return;}
+  const memoryAction=closest('[data-memory-action]');
+  if(memoryAction){updateMemoryRecord(memoryAction.dataset.memoryId,memoryAction.dataset.memoryAction);return;}
+  if(closest('#newAssistantConversation')){createAssistantConversation();return;}
+  if(closest('#toggleAssistantHistory')){assistantHistoryOpen=!assistantHistoryOpen;renderAssistantConversationHistory();return;}
+  if(closest('#archiveAssistantConversation')){archiveAssistantConversation();return;}
+  if(closest('#clearAssistantConversation')){clearAssistantConversation();return;}
+  const openConversation=closest('[data-open-assistant-conversation]');
+  if(openConversation){switchAssistantConversation(openConversation.dataset.openAssistantConversation);return;}
+  const restoreConversation=closest('[data-restore-assistant-conversation]');
+  if(restoreConversation){restoreAssistantConversation(restoreConversation.dataset.restoreAssistantConversation);return;}
+
+  const statusButton=closest('[data-admin-status]');
+  if(statusButton){updateAdminUserStatus(statusButton.dataset.adminUser,statusButton.dataset.adminStatus);return;}
+  const permissionButton=closest('[data-admin-permissions]');
+  if(permissionButton){openAdminPermissions(permissionButton.dataset.adminPermissions);return;}
+  if(target.id==='refreshAdminUsers'){loadAdminUsers();return;}
+  if(target.id==='closeAdminPermission'){byId('adminPermissionPanel').hidden=true;selectedAdminUserId=null;return;}
+  if(target.id==='saveAdminPermissions'){saveAdminPermissions();return;}
+  if(target.id==='approvalSignOut'){signOut();return;}
+  if(target.id==='approvalRefresh'){lastHandledSessionKey=null;handleSession({user:currentUser});return;}
+
+  const nav=closest('[data-view]');
+  if(nav){showView(nav.dataset.view);return;}
+  const go=closest('[data-go]');
+  if(go){showView(go.dataset.go);return;}
+  const detail=closest('[data-detail]');
+  if(detail&&!detail.closest('#orderTable')&&!detail.closest('#mobileOrderList')){openDetails(detail.dataset.detail);return;}
+  const close=closest('[data-close]');
+  if(close){byId(close.dataset.close)?.close();return;}
+  const page=closest('[data-order-page]');
+  if(page&&!page.disabled){orderPage=Number(page.dataset.orderPage);renderOrders();return;}
+  const type=closest('[data-order-type]');
+  if(type){setOrderType(type.dataset.orderType);return;}
+  const filter=closest('[data-type-filter]');
+  if(filter){activeType=filter.dataset.typeFilter;orderPage=1;document.querySelectorAll('[data-type-filter]').forEach(button=>button.classList.toggle('selected',button===filter));renderOrders();return;}
+  const calcTrigger=closest('[data-calc-for]');
+  if(calcTrigger){openCalculator(calcTrigger.dataset.calcFor);return;}
+  const calcKey=closest('[data-calc-key]');
+  if(calcKey){const input=byId('calcExpression'),key=calcKey.dataset.calcKey;if(key==='C')input.value='';else if(key==='?')input.value=input.value.slice(0,-1);else input.value+=key;byId('calcHint').textContent='支持 + − × ÷ 和括号';byId('calcHint').classList.remove('error');return;}
+  if(target.id==='calcEquals'){calculateAndPreview();return;}
+  if(target.id==='applyCalculation'){const result=calculateAndPreview();if(result!==null&&calculatorTarget){byId(calculatorTarget).value=String(result);refreshFormPreview();byId('calculatorDialog').close();}return;}
+  if(target.id==='importExcel'){byId('excelFile').click();return;}
+  if(target.id==='openOrderDialog'){
+    byId('orderForm').reset();delete byId('orderForm').dataset.editId;byId('orderForm').dataset.saving='false';byId('formKicker').textContent='NEW TRANSACTION';byId('formHeading').textContent='新增订单';byId('formSubmit').disabled=false;byId('formSubmit').textContent='保存订单';byId('orderDate').value=today;byId('serviceDate').value=today;byId('paymentStatus').value='paid';byId('supplierPaymentStatus').value='unknown';byId('supplierPaid').value=0;byId('settlementMode').value='agency_pay';syncSettlementFields();setOrderType('hotel');byId('orderStatus').value='booked';byId('orderDialog').showModal();return;
+  }
+  if(target.id==='editOrder'){openEditOrder(target.dataset.id);return;}
+  if(target.id==='deleteOrder'){deleteOrder(target.dataset.id);return;}
+  if(target.id==='migrateLocalData'){migrateLocalData();return;}
+  if(target.id==='signOut'){signOut();return;}
+  if(target.id==='addPayment'){
+    const order=orders.find(item=>item.id===target.dataset.id);if(!order)return;
+    if(!isCommissionOrder(order))order.customerPaymentStatus=null;
+    if(isCommissionOrder(order)){
+      const outstanding=commissionOutstanding(order),value=window.prompt(`请输入本次返佣金额（最多 ${compactCurrency(outstanding)}）`,outstanding);
+      if(value!==null&&!Number.isNaN(Number(value))){const delta=Math.min(commissionExpected(order),commissionReceived(order)+Number(value))-commissionReceived(order);order.commissionReceived=commissionReceived(order)+delta;order.commissionStatus=commissionReceived(order)>=commissionExpected(order)?'received':'partial';order.commissionReceivedDate=today;saveOrder(order).then(()=>saveLedgerTransaction({orderId:order.id,kind:'commission_receipt',amount:delta,date:today,note:`佣金到账 · ${order.confirmation||orderCode(order)}`})).then(()=>{renderAll();openDetails(order.id);}).catch(error=>window.alert(`保存返佣失败：${error.message}`));}
+    }else{
+      const outstanding=order.gmv-order.received,value=window.prompt(`请输入本次收款金额（最多 ${compactCurrency(outstanding)}）`,outstanding);
+      if(value!==null&&!Number.isNaN(Number(value))){const delta=Math.min(order.gmv,order.received+Number(value))-order.received;order.received+=delta;order.paymentStatus=order.received>=order.gmv?'paid':'partial';saveOrder(order).then(()=>saveLedgerTransaction({orderId:order.id,kind:'customer_receipt',amount:delta,date:today,note:`订单收款 · ${order.confirmation||orderCode(order)}`})).then(()=>{renderAll();openDetails(order.id);}).catch(error=>window.alert(`保存收款失败：${error.message}`));}
+    }
+  }
+}
+
+document.addEventListener('click',handleDocumentClick);
