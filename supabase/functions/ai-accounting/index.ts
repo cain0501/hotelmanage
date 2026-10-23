@@ -1,4 +1,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import {
+  customerPaymentStatus as domainCustomerPaymentStatus,
+  dateKeyInChina,
+  isCommissionOrder as domainIsCommissionOrder,
+  isFailedOrder as domainIsFailedOrder,
+  isPayable as domainIsPayable,
+  isReceivable as domainIsReceivable,
+  orderProfit as domainOrderProfit,
+  commissionOutstanding as domainCommissionOutstanding,
+} from '../_shared/domain.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -294,12 +304,7 @@ const chatTools = [
 const numberValue = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
 
 function orderProfit(order: Record<string, unknown>) {
-  if (order.profit_override !== null && order.profit_override !== undefined && order.profit_override !== '') {
-    return numberValue(order.profit_override);
-  }
-  return order.settlement_mode === 'guest_pay_commission'
-    ? numberValue(order.commission_received) - numberValue(order.direct_cost)
-    : numberValue(order.gmv) - numberValue(order.cost);
+  return domainOrderProfit(order);
 }
 
 function dateInRange(value: unknown, start: string, end: string) {
@@ -321,20 +326,19 @@ function normalizedText(value: unknown) {
 }
 
 function isFailedOrder(order: Record<string, unknown>) {
-  return ['cancelled', 'refunded'].includes(String(order.status || ''));
+  return domainIsFailedOrder(order);
 }
 
 function isCommissionOrderRecord(order: Record<string, unknown>) {
-  return order.settlement_mode === 'guest_pay_commission';
+  return domainIsCommissionOrder(order);
 }
 
 function commissionOutstandingRecord(order: Record<string, unknown>) {
-  return Math.max(0, numberValue(order.commission_expected) - numberValue(order.commission_received));
+  return domainCommissionOutstanding(order);
 }
 
 function customerPaymentStatusRecord(order: Record<string, unknown>) {
-  if (isCommissionOrderRecord(order) || String(order.settlement_mode || '') === 'no_funds') return 'not_applicable';
-  return String(order.customer_payment_status || order.payment_status || (numberValue(order.received) >= numberValue(order.gmv) ? 'paid' : numberValue(order.received) > 0 ? 'partial' : 'unpaid'));
+  return domainCustomerPaymentStatus(order);
 }
 
 function supplierPaidRecord(order: Record<string, unknown>) {
@@ -348,16 +352,11 @@ function supplierPaymentStatusRecord(order: Record<string, unknown>) {
 }
 
 function supplierPayableRecord(order: Record<string, unknown>) {
-  if (isCommissionOrderRecord(order) || String(order.settlement_mode || '') === 'no_funds' || isFailedOrder(order)) return false;
-  return ['unpaid', 'partial'].includes(supplierPaymentStatusRecord(order));
+  return domainIsPayable(order);
 }
 
 function customerReceivableRecord(order: Record<string, unknown>) {
-  if (isCommissionOrderRecord(order) || isFailedOrder(order)) return false;
-  const gmv = numberValue(order.gmv);
-  const paymentStatus = customerPaymentStatusRecord(order);
-  if (paymentStatus === 'refunded') return false;
-  return gmv > 0 && ['unpaid', 'partial', 'unknown'].includes(paymentStatus) || gmv > numberValue(order.received);
+  return domainIsReceivable(order);
 }
 
 function invoiceIssueRecord(order: Record<string, unknown>, includeNoInvoice = false) {
@@ -739,7 +738,7 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
     orders: rows.length,
     gmv: rows.reduce((sum, order) => sum + numberValue(order.gmv), 0),
     profit: rows.reduce((sum, order) => sum + orderProfit(order), 0),
-    roomNights: rows.reduce((sum, order) => sum + (order.type === 'hotel' ? numberValue(order.rooms || 1) * numberValue(order.nights) : 0), 0),
+     roomNights: rows.reduce((sum, order) => sum + (order.type === 'hotel' ? numberValue(order.rooms || 1) * numberValue(order.nights) : 0), 0),
     tickets: rows.reduce((sum, order) => sum + numberValue(order.tickets), 0),
     received: rows.reduce((sum, order) => sum + numberValue(order.received), 0),
     customerReceivable: rows.reduce((sum, order) => sum + (customerReceivableRecord(order) ? Math.max(0, numberValue(order.gmv) - numberValue(order.received)) : 0), 0),
@@ -785,9 +784,26 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
 
 function safeBaseUrl(value: string) {
   const fallback = Deno.env.get('AI_BASE_URL') || 'https://api.openai.com/v1';
+  const allowedHosts = new Set(
+    (Deno.env.get('AI_ALLOWED_HOSTS') || 'api.openai.com,api.deepseek.com')
+      .split(',')
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const isPrivateIp = (hostname: string) => {
+    const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    if (host === 'localhost' || host.endsWith('.localhost') || host === '0.0.0.0') return true;
+    const octets = host.split('.').map(Number);
+    if (octets.length === 4 && octets.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)) {
+      return octets[0] === 10 || octets[0] === 127 || octets[0] === 169 && octets[1] === 254
+        || octets[0] === 192 && octets[1] === 168 || octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31;
+    }
+    return host.includes(':');
+  };
   try {
     const url = new URL(value || fallback);
     if (url.protocol !== 'https:') throw new Error('模型接口必须使用 HTTPS');
+    if (isPrivateIp(url.hostname) || !allowedHosts.has(url.hostname.toLowerCase())) throw new Error('模型接口地址未被允许');
     return url.toString().replace(/\/$/, '');
   } catch {
     throw new Error('模型接口地址无效');
@@ -805,6 +821,7 @@ function parseModelJson(content: string) {
 async function callModel(baseUrl: string, apiKey: string, payload: Record<string, unknown>) {
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
+    redirect: 'error',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
@@ -877,7 +894,7 @@ Deno.serve(async (request) => {
     const baseUrl = safeBaseUrl(settings?.base_url || '');
     const model = settings?.model || Deno.env.get('AI_MODEL') || 'gpt-4o-mini';
     const temperature = Math.min(0.5, Math.max(0, Number(settings?.temperature ?? 0.1)));
-    const today = new Date().toISOString().slice(0, 10);
+     const today = dateKeyInChina();
     const conversationId = typeof body?.conversation_id === 'string' ? body.conversation_id : null;
     runId = mode === 'chat' ? await createAssistantRun(adminClient, user.id, conversationId, text) : null;
 

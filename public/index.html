@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="酒店与机票经营台账原型" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://onomizgpzhqrmiuqeikf.supabase.co wss://onomizgpzhqrmiuqeikf.supabase.co; img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none';" />
     <title>奢隐旅业助手 · 酒店与机票运营工作台</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -510,8 +511,8 @@
              <section class="panel ai-settings-panel">
               <div class="panel-head"><div><p class="eyebrow">MODEL SETTINGS</p><h2>模型配置</h2></div><span id="aiConfigStatus" class="panel-caption">未配置</span></div>
               <form id="aiSettingsForm" class="ai-settings-form">
-                <label>接口类型<select id="aiProvider"><option value="openai-compatible">OpenAI 兼容接口</option><option value="deepseek">DeepSeek</option><option value="custom">自定义接口</option></select></label>
-                <label>接口地址<input id="aiBaseUrl" type="url" placeholder="https://api.openai.com/v1" /></label>
+                 <label>接口类型<select id="aiProvider"><option value="openai-compatible">OpenAI 兼容接口</option><option value="deepseek">DeepSeek</option><option value="custom">自定义接口（需后台白名单）</option></select></label>
+                 <label>接口地址<input id="aiBaseUrl" type="url" readonly aria-readonly="true" placeholder="https://api.openai.com/v1" /></label>
                 <label>模型名称<input id="aiModel" placeholder="gpt-4o-mini" /></label>
                 <label>温度<input id="aiTemperature" type="number" min="0" max="0.5" step="0.1" /></label>
                 <label class="ai-toggle"><input id="aiEnabled" type="checkbox" />启用一句话记账</label>
@@ -723,6 +724,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+    <script src="shared/domain.js?v=20261023-51"></script>
     <script src="app.js?v=20261023-51"></script>
   </body>
 </html>

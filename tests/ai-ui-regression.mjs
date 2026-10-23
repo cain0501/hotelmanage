@@ -5,7 +5,7 @@ import { dirname, resolve } from 'node:path';
 import vm from 'node:vm';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const source = await readFile(resolve(root, 'app.js'), 'utf8');
+const source = await readFile(resolve(root, 'public/app.js'), 'utf8');
 const helperStart = source.indexOf('function aiValue');
 const helperEnd = source.indexOf('function renderAiDraft', helperStart);
 assert.notEqual(helperStart, -1, 'AI draft normalization helpers must exist');

@@ -5,8 +5,8 @@ import { dirname, resolve } from 'node:path';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const [html, source] = await Promise.all([
-  readFile(resolve(root, 'index.html'), 'utf8'),
-  readFile(resolve(root, 'app.js'), 'utf8'),
+  readFile(resolve(root, 'public/index.html'), 'utf8'),
+  readFile(resolve(root, 'public/app.js'), 'utf8'),
 ]);
 
 assert.match(html, /id="roomNightAvgGmv"/, 'dashboard must expose the average nightly GMV metric');
