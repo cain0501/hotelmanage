@@ -20,6 +20,9 @@ assert.match(source, /user_id: userId/, 'server-side AI records must use the aut
 assert.match(source, /settlement_mode: 'agency_pay \| guest_pay_commission \| no_funds'/, 'accounting drafts must expose settlement mode');
 assert.match(source, /settlement_mode: \{ type: 'string', enum: \['agency_pay', 'guest_pay_commission', 'no_funds'\] \}/, 'draft tool must accept commission settlement mode');
 assert.match(source, /commission_status: \{ type: 'string', enum: \['pending', 'partial', 'received', 'none'\] \}/, 'draft tool must expose commission status');
+assert.match(source, /commission_platform,service_date/, 'business summaries must load commission platforms');
+assert.match(source, /function paymentPlatformRecord\(order: Record<string, unknown>\)/, 'AI summaries must resolve the platform by settlement mode');
+assert.match(source, /groupBy === 'payment_platform' \? paymentPlatformRecord\(order\)/, 'AI platform grouping must include commission platforms');
 
 const dateInRange = (value, start, end) => {
   const date = String(value || '');

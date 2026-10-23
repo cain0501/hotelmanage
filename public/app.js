@@ -183,6 +183,10 @@ const nextOrderCode = () => {
 const newOrderId = type => `${type === 'hotel' ? 'HT' : 'FL'}-${today.replaceAll('-', '')}-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 const settlementMode = hotelDomain.settlementMode;
 const isCommissionOrder = hotelDomain.isCommissionOrder;
+const platformName = order => {
+  const value = isCommissionOrder(order) ? order.commissionPlatform : order.paymentPlatform;
+  return String(value || '未填写平台').trim() || '未填写平台';
+};
 const isFailedOrder = hotelDomain.isFailedOrder;
 const commissionReceived = hotelDomain.commissionReceived;
 const commissionExpected = hotelDomain.commissionExpected;
@@ -199,7 +203,11 @@ const supplierPaymentStatus = hotelDomain.supplierPaymentStatus;
 const supplierPaymentText = order => ({ paid:'已付款', partial:'部分付款', unpaid:'未付款', unknown:'待核对', not_required:'无需付款' })[supplierPaymentStatus(order)] || '待核对';
 const payment = order => isCommissionOrder(order) ? (commissionStatus(order)==='pending'?'unpaid':commissionStatus(order)==='partial'?'partial':'paid') : customerPaymentStatus(order);
 const paymentText = order => isCommissionOrder(order) ? commissionStatusText(order) : ({ paid:'已收款', partial:'部分收款', unpaid:'未收款', refunded:'已退款', unknown:'待核对', not_applicable:'无需收款' })[customerPaymentStatus(order)];
-const settlementText = order => ({ agency_pay:'我方代付', guest_pay_commission:'客人前台支付 · 平台返佣', no_funds:'无资金往来' })[settlementMode(order)] || '我方代付';
+const settlementText = order => {
+  const mode = settlementMode(order);
+  if (mode === 'guest_pay_commission') return `客人前台支付 · 平台返佣 · 返佣平台：${platformName(order)}`;
+  return ({ agency_pay:'我方代付', no_funds:'无资金往来' })[mode] || '我方代付';
+};
 const customerReceivable = hotelDomain.isReceivable;
 const supplierPayable = hotelDomain.isPayable;
 const paymentIssue = order => isCommissionOrder(order) ? commissionOutstanding(order)>0 : customerReceivable(order)||supplierPayable(order);
@@ -683,7 +691,7 @@ function renderBookerRanking() {
   byId('bookerRanking').innerHTML=list.map(([name,item],i)=>`<div class="rank-row booker-rank-row"><b>${String(i+1).padStart(2,'0')}</b><div><span class="rank-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><div class="rank-line"><span style="width:${item.gmv/max*100}%"></span></div><small class="rank-sub">${item.orders} 笔订单</small></div><strong>${compactCurrency(item.gmv)}</strong></div>`).join('')||'<div class="empty-state">暂无预订人数据</div>';
 }
 function renderPaymentPlatformDistribution() {
-  const platformMap=dashboardOrders().reduce((map,order)=>{const platform=String(order.paymentPlatform||'未填写平台').trim()||'未填写平台';map[platform]=(map[platform]||0)+Number(order.gmv||0);return map},{});
+  const platformMap=dashboardOrders().reduce((map,order)=>{const platform=platformName(order);map[platform]=(map[platform]||0)+Number(order.gmv||0);return map},{});
   const sorted=Object.entries(platformMap).sort((a,b)=>b[1]-a[1]);const total=sorted.reduce((sum,[,value])=>sum+value,0);const top=sorted.slice(0,7);const rest=sorted.slice(7).reduce((sum,[,value])=>sum+value,0);if(rest>0)top.push(['其他',rest]);
   const colors=['#1f5b4e','#bd843b','#6d9b8d','#d6b47a','#8b6d4b','#47796f','#b6c9c0','#d8d1c4'];let cursor=0;const stops=top.map(([name,value],index)=>{const start=cursor;cursor+=total?value/total*360:0;return `${colors[index%colors.length]} ${start}deg ${cursor}deg`;});
   byId('platformTotal').textContent=compactCurrency(total);byId('platformDonut').style.background=top.length?`conic-gradient(${stops.join(',')})`:'conic-gradient(#ded7c7 0deg 360deg)';byId('platformLegend').innerHTML=top.map(([name,value],index)=>{const share=total?Math.round(value/total*100):0;return `<div class="city-legend-row" title="${escapeHtml(name)} · ${compactCurrency(value)}" style="--legend-delay:${index*65}ms;--city-share:${share}%;color:${colors[index%colors.length]}"><i style="background:${colors[index%colors.length]}"></i><span>${escapeHtml(name)}</span><b>${share}%</b></div>`}).join('')||'<div class="empty-state">暂无付款平台数据</div>';

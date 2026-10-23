@@ -333,6 +333,11 @@ function isCommissionOrderRecord(order: Record<string, unknown>) {
   return domainIsCommissionOrder(order);
 }
 
+function paymentPlatformRecord(order: Record<string, unknown>) {
+  const value = isCommissionOrderRecord(order) ? order.commission_platform : order.payment_platform;
+  return String(value || '未填写平台').trim() || '未填写平台';
+}
+
 function commissionOutstandingRecord(order: Record<string, unknown>) {
   return domainCommissionOutstanding(order);
 }
@@ -718,7 +723,7 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
   const type = ['hotel', 'flight'].includes(String(args.type)) ? String(args.type) : 'all';
   const includeFailed = args.include_failed === true;
   const [ordersResult, incomeResult] = await Promise.all([
-    client.from('orders').select('id,order_code,type,customer,booker,location,supplier,payment_platform,service_date,order_date,rooms,nights,tickets,gmv,cost,received,status,settlement_mode,commission_expected,commission_received,direct_cost,profit_override,customer_payment_status,payment_status,supplier_paid,supplier_payment_status').limit(10000),
+    client.from('orders').select('id,order_code,type,customer,booker,location,supplier,payment_platform,commission_platform,service_date,order_date,rooms,nights,tickets,gmv,cost,received,status,settlement_mode,commission_expected,commission_received,direct_cost,profit_override,customer_payment_status,payment_status,supplier_paid,supplier_payment_status').limit(10000),
     client.from('other_income').select('income_date,amount,expense').limit(10000),
   ]);
   if (ordersResult.error) throw ordersResult.error;
@@ -752,7 +757,7 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
   };
   const groupBy = String(args.group_by || 'none');
   const ranking = groupBy === 'none' ? [] : Object.values(rows.reduce((groups: Record<string, any>, order: Record<string, unknown>) => {
-    const name = String(order[groupBy] || '未填写');
+    const name = groupBy === 'payment_platform' ? paymentPlatformRecord(order) : String(order[groupBy] || '未填写');
     const current = groups[name] || { name, orders: 0, gmv: 0, profit: 0 };
     current.orders += 1;
     current.gmv += numberValue(order.gmv);
