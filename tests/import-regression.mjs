@@ -14,4 +14,8 @@ assert.match(source, /status:'active',reverted_at:null/, 're-importing a reverte
 assert.match(source, /supplierPaymentFilter='all'.{0,240}byId\('supplierPaymentFilter'\)\.value='all'/s, 'import completion must clear all order filters');
 assert.match(source, /ledgerTransactions=ledgerTransactions\.map\(item=>\(\{\.\.\.item,kind:escapeHtml/, 'order detail ledger text must be escaped before HTML insertion');
 
+const realtimeMigration = await readFile(resolve(root, 'supabase/migrations/20261023130000_enable_realtime_sync.sql'), 'utf8');
+assert.match(realtimeMigration, /pg_publication_tables/, 'Realtime migration must be idempotent');
+assert.match(realtimeMigration, /ledger_transactions/, 'Realtime migration must include ledger transactions');
+
 console.log('Import regression tests passed');
