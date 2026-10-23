@@ -14,7 +14,7 @@ assert.match(source, /hotelGmv\/hotelRoomNights/, 'average nightly GMV must divi
 assert.match(source, /const platformName = order =>/, 'platform display must use a shared platform resolver');
 assert.match(source, /isCommissionOrder\(order\) \? order\.commissionPlatform : order\.paymentPlatform/, 'commission orders must display their commission platform');
 assert.match(source, /const platformMap=dashboardOrders\(\)\.reduce\(.*platformName\(order\)/, 'payment platform distribution must use the resolved platform');
-assert.match(source, /返佣平台：\$\{platformName\(order\)\}/, 'commission platform must be visible in order settlement text');
+assert.match(source, /if \(mode === 'guest_pay_commission'\) return platformName\(order\);/, 'commission settlement text must use only the platform name');
 
 const hotelGmv = 1926.98;
 const roomNights = 2;

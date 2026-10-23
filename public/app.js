@@ -205,7 +205,7 @@ const payment = order => isCommissionOrder(order) ? (commissionStatus(order)==='
 const paymentText = order => isCommissionOrder(order) ? commissionStatusText(order) : ({ paid:'已收款', partial:'部分收款', unpaid:'未收款', refunded:'已退款', unknown:'待核对', not_applicable:'无需收款' })[customerPaymentStatus(order)];
 const settlementText = order => {
   const mode = settlementMode(order);
-  if (mode === 'guest_pay_commission') return `客人前台支付 · 平台返佣 · 返佣平台：${platformName(order)}`;
+  if (mode === 'guest_pay_commission') return platformName(order);
   return ({ agency_pay:'我方代付', no_funds:'无资金往来' })[mode] || '我方代付';
 };
 const customerReceivable = hotelDomain.isReceivable;
