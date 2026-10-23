@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261023-49" />
+    <link rel="stylesheet" href="styles.css?v=20261023-50" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -333,7 +333,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-           <small class="app-version">版本 20261023-49</small>
+           <small class="app-version">版本 20261023-50</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -368,7 +368,7 @@
 
           <section class="metric-grid" aria-label="关键经营指标">
             <article class="metric-card"><p>酒店订单</p><strong id="hotelOrders">0</strong><span id="hotelOrderHint">—</span></article>
-            <article class="metric-card"><p>房晚数</p><strong id="roomNights">0</strong><span>房间数 × 晚数</span></article>
+            <article class="metric-card"><p>房晚数</p><strong id="roomNights">0</strong><span id="roomNightAvgGmv">平均每晚 GMV —</span><span>房间数 × 晚数</span></article>
             <article class="metric-card"><p>机票订单</p><strong id="flightOrders">0</strong><span id="flightOrderHint">—</span></article>
             <article class="metric-card"><p>票数</p><strong id="ticketCount">0</strong><span>已出票及待出票</span></article>
             <article class="metric-card dark"><p>待收款</p><strong id="receivable">¥0</strong><span id="receivableHint">0 笔需跟进</span></article>
@@ -723,6 +723,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
-    <script src="app.js?v=20261023-49"></script>
+    <script src="app.js?v=20261023-50"></script>
   </body>
 </html>

@@ -675,8 +675,8 @@ function renderDashboard() {
   byId('heroMargin').textContent = total.gmv ? `${(total.profit / total.gmv * 100).toFixed(1)}%` : '—';
   byId('orderProfit').textContent=compactCurrency(total.profit); byId('dashboardOtherIncomeNet').textContent=compactCurrency(otherNet); byId('combinedNetProfit').textContent=compactCurrency(combinedNet);
   byId('otherIncomeHint').textContent=`收入 ${compactCurrency(otherIncomeTotal)} · 支出 ${compactCurrency(otherExpenseTotal)}`;
-  byId('hotelOrders').textContent = hotels.length; byId('hotelOrderHint').textContent = `${compactCurrency(sums(hotels).gmv)} GMV`;
-  byId('roomNights').textContent = hotels.reduce((n,o)=>n+roomNights(o),0);
+  const hotelGmv=sums(hotels).gmv,hotelRoomNights=hotels.reduce((n,o)=>n+roomNights(o),0); byId('hotelOrders').textContent = hotels.length; byId('hotelOrderHint').textContent = `${compactCurrency(hotelGmv)} GMV`;
+  byId('roomNights').textContent = hotelRoomNights; byId('roomNightAvgGmv').textContent=hotelRoomNights?`平均每晚 GMV ¥${(hotelGmv/hotelRoomNights).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})}`:'平均每晚 GMV —';
   byId('flightOrders').textContent = flights.length; byId('flightOrderHint').textContent = `${compactCurrency(sums(flights).gmv)} GMV`;
   byId('ticketCount').textContent = flights.reduce((n,o)=>n+Number(o.tickets||0),0);
   const outstanding = data.filter(customerReceivable); const due = outstanding.reduce((n,o)=>n+Math.max(0,o.gmv-o.received),0); const payable = data.filter(supplierPayable); const payableDue=payable.reduce((n,o)=>n+Math.max(0,Number(o.cost||0)-supplierPaid(o)),0); const commissionDue=data.filter(isCommissionOrder).reduce((n,o)=>n+commissionOutstanding(o),0); const commissionOrders=data.filter(o=>isCommissionOrder(o)&&commissionOutstanding(o)>0).length;
