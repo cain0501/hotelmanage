@@ -1,4 +1,4 @@
--- 栖账 Supabase 数据库初始化脚本
+-- 奢隐旅业助手 Supabase 数据库初始化脚本
 -- 在 Supabase Dashboard -> SQL Editor 中完整粘贴并点击 Run 一次。
 -- 只允许已登录用户访问自己的订单和其它收入记录。
 

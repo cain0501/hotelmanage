@@ -4,11 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="酒店与机票经营台账原型" />
-    <title>栖账 · 酒店运营台账</title>
+    <title>奢隐旅业助手 · 酒店与机票运营工作台</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261023-50" />
+    <link rel="stylesheet" href="styles.css?v=20261023-51" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -239,7 +239,7 @@
     <section class="auth-shell" id="authShell">
       <div class="auth-card">
         <p class="eyebrow">HOTEL & FLIGHT · CLOUD LEDGER</p>
-        <h1>栖账云端登录</h1>
+        <h1>奢隐旅业助手云端登录</h1>
         <p class="auth-lead">登录后，订单、收款、开票和其它收入会保存在 Supabase，电脑与手机使用同一份数据。</p>
         <form id="authForm">
           <label>邮箱<input id="authEmail" type="email" autocomplete="email" required placeholder="输入登录邮箱" /></label>
@@ -255,7 +255,7 @@
     <section class="auth-shell register-shell" id="registerShell" hidden>
       <div class="auth-card">
         <p class="eyebrow">CREATE YOUR ACCOUNT</p>
-        <h1>注册栖账云端</h1>
+        <h1>注册奢隐旅业助手</h1>
         <p class="auth-lead">注册后需要管理员审核。审核通过并分配功能后，才可以进入订单和经营数据。</p>
         <form id="registerForm">
           <label>邮箱<input id="registerEmail" type="email" autocomplete="email" required placeholder="输入注册邮箱" /></label>
@@ -310,9 +310,9 @@
 
     <div class="app-shell" id="appShell" hidden>
       <aside class="sidebar">
-        <a class="brand" href="#dashboard" aria-label="栖账首页">
-          <span class="brand-mark">栖</span>
-          <span><strong>栖账</strong><small>OPERATIONS LEDGER</small></span>
+        <a class="brand" href="#dashboard" aria-label="奢隐旅业助手首页">
+          <span class="brand-mark">奢</span>
+          <span><strong>奢隐旅业助手</strong><small>HOTEL · FLIGHT · AI OPERATIONS</small></span>
         </a>
         <nav class="main-nav" aria-label="主导航">
           <button class="nav-item active" data-view="dashboard"><span>◈</span>经营总览</button>
@@ -333,7 +333,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-           <small class="app-version">版本 20261023-50</small>
+           <small class="app-version">版本 20261023-51</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -723,6 +723,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
-    <script src="app.js?v=20261023-50"></script>
+    <script src="app.js?v=20261023-51"></script>
   </body>
 </html>

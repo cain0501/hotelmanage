@@ -1,6 +1,6 @@
-# 栖账：酒店运营台账
+# 奢隐旅业助手：酒店与机票运营工作台
 
-这是一个静态前端酒店运营台账，使用 Supabase Auth、Postgres、RLS 和 Realtime 保存云端数据。包含：
+这是一个静态前端酒店与机票运营工作台，使用 Supabase Auth、Postgres、RLS 和 Realtime 保存云端数据。包含：
 
 - 酒店/机票订单拆分
 - 房晚、票数、GMV、成本、利润和客户待收款实时统计
