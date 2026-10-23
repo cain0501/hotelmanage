@@ -20,8 +20,9 @@ const accountingSchema = {
     type: 'hotel | flight', customer: 'string', booker: 'string', order_date: 'YYYY-MM-DD', service_date: 'YYYY-MM-DD',
     location: 'string', supplier: 'string', product: 'string', confirmation: 'string', rooms: 'number', nights: 'number',
     tickets: 'number', gmv: 'number', cost: 'number', payment_status: 'paid | partial | unpaid | refunded', customer_payment_status: 'paid | partial | unpaid | refunded | not_applicable', supplier_paid: 'number', supplier_payment_status: 'paid | partial | unpaid | unknown | not_required', payment_platform: 'string',
-    status: 'booked | confirming | confirmed | cancelled | pending | ticketed | refunded', commission_platform: 'string',
-    commission_expected: 'number', commission_received: 'number', direct_cost: 'number', guest_payment_to: 'string',
+    status: 'booked | confirming | confirmed | cancelled | pending | ticketed | refunded', settlement_mode: 'agency_pay | guest_pay_commission | no_funds',
+    guest_payment_to: 'string', commission_platform: 'string', commission_status: 'pending | partial | received | none',
+    commission_expected: 'number', commission_received: 'number', direct_cost: 'number',
   },
   income: { date: 'YYYY-MM-DD', name: 'string', payer: 'string', payee: 'string', amount: 'number', expense: 'number', search_text: 'string' },
 };
@@ -271,8 +272,9 @@ const chatTools = [
               service_date: { type: 'string' }, location: { type: 'string' }, supplier: { type: 'string' }, product: { type: 'string' },
               confirmation: { type: 'string' }, rooms: { type: 'number' }, nights: { type: 'number' }, tickets: { type: 'number' },
               gmv: { type: 'number' }, cost: { type: 'number' }, payment_status: { type: 'string' }, customer_payment_status: { type: 'string' }, supplier_paid: { type: 'number' }, supplier_payment_status: { type: 'string' }, payment_platform: { type: 'string' },
-              status: { type: 'string' }, commission_platform: { type: 'string' }, commission_expected: { type: 'number' },
-              commission_received: { type: 'number' }, direct_cost: { type: 'number' }, guest_payment_to: { type: 'string' },
+              status: { type: 'string' }, settlement_mode: { type: 'string', enum: ['agency_pay', 'guest_pay_commission', 'no_funds'] },
+              guest_payment_to: { type: 'string' }, commission_platform: { type: 'string' }, commission_status: { type: 'string', enum: ['pending', 'partial', 'received', 'none'] },
+              commission_expected: { type: 'number' }, commission_received: { type: 'number' }, direct_cost: { type: 'number' },
             },
           },
           income: {

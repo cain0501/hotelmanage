@@ -17,6 +17,9 @@ assert.match(source, /confirm_action/, 'high-risk changes must require confirmat
 assert.match(source, /profile\.account_status !== 'approved'/, 'AI must reject unapproved accounts');
 assert.match(source, /required_feature: 'ai\.use'/, 'AI must enforce the assigned feature permission');
 assert.match(source, /user_id: userId/, 'server-side AI records must use the authenticated user id');
+assert.match(source, /settlement_mode: 'agency_pay \| guest_pay_commission \| no_funds'/, 'accounting drafts must expose settlement mode');
+assert.match(source, /settlement_mode: \{ type: 'string', enum: \['agency_pay', 'guest_pay_commission', 'no_funds'\] \}/, 'draft tool must accept commission settlement mode');
+assert.match(source, /commission_status: \{ type: 'string', enum: \['pending', 'partial', 'received', 'none'\] \}/, 'draft tool must expose commission status');
 
 const dateInRange = (value, start, end) => {
   const date = String(value || '');
