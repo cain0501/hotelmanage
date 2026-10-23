@@ -2,7 +2,7 @@
 
 更新时间：2026-10-23
 
-当前网站版本：`20261023-57`
+当前网站版本：`20261023-58`
 
 ## 本轮实施：多用户账户与权限隔离
 
@@ -51,12 +51,20 @@
 2. 重新部署 `supabase/functions/ai-accounting/index.ts`。
 3. 验证单次确认、连续双击确认、刷新后确认、订单已变化后确认和取消任务。
 
+## 本轮实施：迁移与发布闭环
+
+- 已将 `20261023120000_ledger_transactions_and_import_batches.sql` 推送到 `hotel-operations`，远端确认 `ledger_transactions` 与 `import_batches` 已存在并启用 RLS。
+- 已重新部署 `ai-accounting` Edge Function，并确认未登录请求返回 401。
+- 修复导入批次刷新后无法撤回的问题，订单重新加载时会保留 `import_batch_id` 和 `source_row`。
+- 撤回后的同一文件可以重新导入，批次会恢复为 active，不会产生重复批次。
+- 导入完成后会清空付款平台筛选，避免用户误以为新导入数据缺失。
+- 订单详情资金流水中的用户输入已在写入 HTML 前转义。
+
 ## 下一阶段
 
 - 已完成首轮事件路由清理；后续继续合并剩余后置函数覆盖，并补充可执行的浏览器端关键流程测试。
 
-- 在 Supabase 执行 `supabase/migrations/20261023120000_ledger_transactions_and_import_batches.sql`，再验证资金流水和导入批次的 RLS。
-- 重新部署 Edge Function，使模型地址白名单和统一统计口径上线。
+- 补充真实账号登录后的订单详情、编辑、收款、删除、AI 确认和批次撤回联测。
 - 补充测试 CI、真实 Realtime 双端联测和 Playwright 关键流程测试。
 
 1. 将知识库升级为文件导入、语义检索和带来源回答。
