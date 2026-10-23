@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261023-48" />
+    <link rel="stylesheet" href="styles.css?v=20261023-49" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -86,6 +86,8 @@
       .filter-grid label { display:grid; gap:5px; color:#756f65; font-size:11px; } .filter-grid select,.filter-grid input { min-width:0; padding:8px 9px; font-size:12px; }
       .filter-keyword { grid-column:span 2; } .filter-actions { display:flex; justify-content:flex-end; gap:9px; padding-top:15px; }
       .filter-applied { box-shadow:inset 0 -2px 0 #bd843b; }
+      .filter-result-summary { margin-top:11px; color:#8b857a; font-size:11px; }
+      .filter-result-summary strong { color:#143b36; font-size:13px; }
       .import-status { display:none; padding:9px 14px; background:#fff0ed; color:#934c3f; font-size:12px; border-bottom:1px solid #f1cdc4; }
       .import-status:not(:empty) { display:block; } .import-status.success { background:#e6f1e9; color:#267255; border-color:#c9e2d0; }
       .import-hint { color:#8f887b; font-size:11px; white-space:nowrap; }
@@ -331,7 +333,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-           <small class="app-version">版本 20261023-48</small>
+           <small class="app-version">版本 20261023-49</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -446,6 +448,20 @@
 
         <section class="view" id="otherIncomeView">
           <div class="section-heading"><div><p class="eyebrow">INCOME LEDGER</p><h2>收入明细</h2><p>记录不属于酒店或机票订单的收入与支出，可选关联订单。</p></div><button class="button primary" id="openOtherIncomeDialog">+ 新增其它收入</button></div>
+          <section class="filter-panel" aria-label="其它收入筛选条件">
+            <div class="filter-title"><div><p class="eyebrow">INCOME FILTERS</p><h2>筛选收入明细</h2></div><span>选择条件后点击查询</span></div>
+            <div class="filter-grid">
+              <label>月份<select id="otherIncomePeriodSelect"><option value="all">全部月份</option><option value="current">本月</option><option value="custom">指定月份</option></select></label>
+              <label>选择月份<input id="otherIncomePeriodMonth" type="month" aria-label="选择其它收入月份" /></label>
+              <label>开始日期<input id="otherIncomeDateStart" type="date" /></label>
+              <label>结束日期<input id="otherIncomeDateEnd" type="date" /></label>
+              <label>明细类型<select id="otherIncomeKindFilter"><option value="all">收入 + 支出</option><option value="income">仅收入</option><option value="expense">仅支出</option></select></label>
+              <label>关联订单<select id="otherIncomeLinkFilter"><option value="all">全部记录</option><option value="linked">已关联订单</option><option value="unlinked">未关联订单</option></select></label>
+              <label class="filter-keyword">关键词<input id="otherIncomeSearch" type="search" placeholder="收入名称、付款方、收款方、订单编号" /></label>
+            </div>
+            <div class="filter-actions"><button class="button quiet" id="clearOtherIncomeFilters" type="button">重置</button><button class="button primary" id="applyOtherIncomeFilters" type="button">查询收入</button></div>
+            <div class="filter-result-summary" id="otherIncomeFilterSummary"></div>
+          </section>
           <div class="ledger-summary" id="otherIncomeSummary"></div>
           <div class="table-panel panel"><div class="table-scroll"><table><thead><tr><th>日期</th><th>收入名称</th><th>付款方</th><th>收款方</th><th>关联订单</th><th>金额</th><th>支出</th><th>净额</th><th>操作</th></tr></thead><tbody id="otherIncomeTable"></tbody></table></div></div>
         </section>
@@ -707,6 +723,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
-    <script src="app.js?v=20261023-48"></script>
+    <script src="app.js?v=20261023-49"></script>
   </body>
 </html>
