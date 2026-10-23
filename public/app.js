@@ -3,6 +3,9 @@ const compactCurrency = value => `¥${Math.round(value).toLocaleString('zh-CN')}
 const dateFmt = date => date ? new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' }).format(new Date(`${date}T00:00:00`)).replace('/', '-') : '—';
 const hotelDomain = globalThis.HotelOperationsDomain;
 if (!hotelDomain) throw new Error('运营规则模块未加载');
+const hotelCalculator = globalThis.HotelOperationsCalculator;
+if (!hotelCalculator) throw new Error('金额计算器模块未加载');
+const evaluateCalculation = hotelCalculator.evaluate;
 const today = hotelDomain.dateKeyInChina();
 
 const seedOrders = [
@@ -132,16 +135,23 @@ const saveOrder = async order => {
   setSyncStatus('已同步到云端', 'synced');
 };
 const saveLedgerTransaction = async ({ orderId, kind, amount, date, note, source='manual' }) => {
-  const record = { order_id: orderId || null, kind, amount: Number(amount || 0), occurred_at: date || today, note: note || '', source };
+  const record = { order_id: orderId || null, kind, amount: Number(amount || 0), occurred_at: date || today, note: note || '', source, import_key: source === 'import' && orderId ? `${orderId}::${kind}` : null };
   if (!cloudReady || !currentUser || !ledgerAvailable) return;
   const { data, error } = await supabaseClient.from('ledger_transactions').insert({ ...record, user_id: currentUser.id }).select('id,order_id,kind,amount,occurred_at,note,source').single();
-  if (error) throw error;
+  if (error) {
+    if (source === 'import' && error.code === '23505') return;
+    throw error;
+  }
   ledgerTransactions=[rowToLedgerTransaction(data),...ledgerTransactions];
 };
-const importFingerprint = file => `${file.name}::${file.size}::${file.lastModified}`;
+const importFingerprint = async file => {
+  const digest=await crypto.subtle.digest('SHA-256',await file.arrayBuffer());
+  const hash=[...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
+  return `sha256:${hash}`;
+};
 async function createImportBatch(file, sheetName, rowCount, { create=true }={}){
   if(!cloudReady||!currentUser)return null;
-  const fingerprint=importFingerprint(file);
+  const fingerprint=await importFingerprint(file);
   const existing=await supabaseClient.from('import_batches').select('id,status,file_name,created_at').eq('user_id',currentUser.id).eq('file_fingerprint',fingerprint).maybeSingle();
   if(existing.error&&!['42P01','PGRST205'].includes(existing.error.code)&&existing.error.status!==404)throw existing.error;
   if(existing.data?.status==='active')return {duplicate:existing.data};
@@ -205,8 +215,7 @@ const payment = order => isCommissionOrder(order) ? (commissionStatus(order)==='
 const paymentText = order => isCommissionOrder(order) ? commissionStatusText(order) : ({ paid:'已收款', partial:'部分收款', unpaid:'未收款', refunded:'已退款', unknown:'待核对', not_applicable:'无需收款' })[customerPaymentStatus(order)];
 const settlementText = order => {
   const mode = settlementMode(order);
-  if (mode === 'guest_pay_commission') return platformName(order);
-  return ({ agency_pay:'我方代付', no_funds:'无资金往来' })[mode] || '我方代付';
+  return ({ agency_pay:'我方代付', guest_pay_commission:'客人前台支付 · 平台返佣', no_funds:'无资金往来' })[mode] || '我方代付';
 };
 const customerReceivable = hotelDomain.isReceivable;
 const supplierPayable = hotelDomain.isPayable;
@@ -702,12 +711,26 @@ function renderCityDistribution() {
 }
 function renderRecentLedger() { byId('recentLedger').innerHTML=transactionRows().slice(0,4).map(row=>`<div class="mini-ledger-row"><div><p>${escapeHtml(row.kind)} · ${escapeHtml(row.party||'')}</p><small>${dateFmt(row.date)} · ${escapeHtml(row.order.id)}</small></div><strong class="amount ${row.amount>=0?'income':'expense'}">${row.amount>=0?'+':'−'}${compactCurrency(Math.abs(row.amount))}</strong></div>`).join('') || '<div class="empty-state">暂无资金流水</div>'; }
 
+function decorateCommissionPlatformLabels(pageList) {
+  const rows=[...byId('orderTable').querySelectorAll('tr[data-detail]')];
+  const cards=[...byId('mobileOrderList').querySelectorAll('article[data-detail]')];
+  pageList.forEach((order,index)=>{
+    if(!isCommissionOrder(order))return;
+    const label=document.createElement('small');
+    label.className='payment-platform';
+    label.textContent=`返佣平台：${platformName(order)}`;
+    rows[index]?.querySelector('.settlement-badge')?.before(label);
+    const mobileMeta=cards[index]?.querySelector('.mobile-order-money > div:last-child');
+    if(mobileMeta)mobileMeta.insertBefore(label.cloneNode(true),mobileMeta.firstChild);
+  });
+}
 function renderOrdersBase() {
   const list=filteredOrders().sort((a,b)=>((b[dateField] || b.orderDate || b.serviceDate || '')).localeCompare(a[dateField] || a.orderDate || a.serviceDate || ''));
   const pageCount=Math.ceil(list.length/ORDER_PAGE_SIZE); orderPage=Math.min(orderPage,pageCount||1);
   const pageList=list.slice((orderPage-1)*ORDER_PAGE_SIZE,orderPage*ORDER_PAGE_SIZE);
   byId('orderTable').innerHTML=pageList.map(order=>{const isHotel=order.type==='hotel'; const invoiceState=invoiceStatus(order); const orderId=escapeHtml(order.id); return `<tr class="clickable ${paymentIssue(order)?'unpaid-order':''}" data-detail="${orderId}"><td><span class="order-code">${escapeHtml(orderCode(order))}</span><small class="order-status">${escapeHtml(statusText(order))}</small></td><td>${dateFmt(order.orderDate || order.serviceDate)}</td><td>${dateFmt(order.serviceDate)}</td><td class="entity-cell"><strong>${escapeHtml(order.customer||'')}</strong><small>${escapeHtml(order.booker||'—')}</small></td><td>${escapeHtml(order.location||'—')}</td><td class="entity-cell"><strong>${escapeHtml(order.supplier||'')}</strong><small>${escapeHtml(typeName(order))}</small></td><td class="entity-cell product-cell"><strong>${escapeHtml(order.product||'—')}</strong>${order.confirmation?`<small class="confirmation-line">确认号：${escapeHtml(order.confirmation)}</small>`:''}</td><td>${isHotel?`${escapeHtml(order.rooms||1)} 间 × ${escapeHtml(order.nights||0)} 晚`:`${escapeHtml(order.tickets||0)} 张`}</td><td class="money">${compactCurrency(order.gmv)}</td><td class="money ${profit(order)>=0?'profit-positive':'profit-negative'}">${compactCurrency(profit(order))}</td><td><span class="status ${escapeHtml(payment(order))}">${escapeHtml(paymentText(order))}</span>${isCommissionOrder(order)?`<small class="payment-platform">${escapeHtml(commissionStatusText(order))}</small>`:`<small class="payment-platform">供应商：${escapeHtml(supplierPaymentText(order))}</small><small class="payment-platform">${escapeHtml(order.paymentPlatform||'未填付款方式')}</small>`}<small class="settlement-badge">${escapeHtml(settlementText(order))}</small></td><td><span class="status ${invoiceState==='issued'?'paid':invoiceState==='no_invoice'?'invoice-no-invoice':'pending'}">${escapeHtml(invoiceText(order))}</span>${invoiceState==='issued'&&order.invoiceCompany?`<small class="invoice-company">${escapeHtml(order.invoiceCompany)}</small>`:''}</td><td><button class="arrow" aria-label="查看订单">›</button></td></tr>`}).join('') || '<tr><td colspan="13"><div class="empty-state">未找到订单</div></td></tr>';
   byId('mobileOrderList').innerHTML=pageList.map(order=>{const isHotel=order.type==='hotel'; const orderId=escapeHtml(order.id); return `<article class="mobile-order-card ${payment(order)==='unpaid'?'unpaid-order':''}" data-detail="${orderId}"><div class="mobile-order-head"><div><div class="mobile-order-code">${escapeHtml(orderCode(order))}</div><div class="mobile-order-title">${escapeHtml(order.supplier||'待确认')}</div><div class="mobile-order-subtitle"><span>${escapeHtml(order.product||typeName(order))}</span>${order.confirmation?`<span class="mobile-order-confirmation">确认号：${escapeHtml(order.confirmation)}</span>`:''}<span>客户：${escapeHtml(order.customer||'待补客户')}</span></div></div><span class="status ${escapeHtml(payment(order))}">${escapeHtml(paymentText(order))}</span></div><div class="mobile-order-meta"><span>下单日期<b>${dateFmt(order.orderDate||order.serviceDate)}</b></span><span>${isHotel?'入住日期':'出发日期'}<b>${dateFmt(order.serviceDate)}</b></span><span>${isHotel?'房晚':'票数'}<b>${isHotel?roomNights(order):`${escapeHtml(order.tickets||0)} 张`}</b></span></div><div class="mobile-order-money"><div><strong>${compactCurrency(order.gmv)}</strong><small>GMV · ${escapeHtml(order.location||'—')}</small></div><div><small>${isCommissionOrder(order)?`${escapeHtml(settlementText(order))} · 佣金 ${compactCurrency(commissionReceived(order))}`:escapeHtml(order.paymentPlatform||'未填付款平台')}</small><small>${escapeHtml(invoiceText(order))}</small></div></div></article>`}).join('') || '<div class="empty-state">未找到订单</div>';
+  decorateCommissionPlatformLabels(pageList);
   const first= list.length ? (orderPage-1)*ORDER_PAGE_SIZE+1 : 0; const last=Math.min(orderPage*ORDER_PAGE_SIZE,list.length);
   byId('orderCountLabel').textContent=list.length?`共 ${list.length} 笔订单 · 显示 ${first}-${last}`:'共 0 笔订单';
   byId('orderPagination').innerHTML=pageCount>1?`<button class="page-button" data-order-page="${orderPage-1}" ${orderPage===1?'disabled':''}>上一页</button><span>第 ${orderPage} / ${pageCount} 页</span><button class="page-button" data-order-page="${orderPage+1}" ${orderPage===pageCount?'disabled':''}>下一页</button>`:'';
@@ -958,7 +981,11 @@ async function deleteOrder(id){
   if(!window.confirm(`确定删除订单 ${orderCode(order)} 吗？\n\n删除后订单、统计和订单资金流水都会移除，且无法恢复。`))return;
   const button=byId('deleteOrder'); if(button){button.disabled=true;button.textContent='删除中…';}
   try{
-    if(cloudReady&&currentUser){const {error}=await supabaseClient.from('orders').delete().eq('id',id);if(error)throw error;}
+    if(cloudReady&&currentUser){
+      if(ledgerAvailable){const ledgerDelete=await supabaseClient.from('ledger_transactions').delete().eq('order_id',id);if(ledgerDelete.error)throw ledgerDelete.error;}
+      const {error}=await supabaseClient.from('orders').delete().eq('id',id);if(error)throw error;
+    }
+    ledgerTransactions=ledgerTransactions.filter(item=>item.orderId!==id);
     orders=orders.filter(item=>item.id!==id);saveLocalOrders();
     byId('detailDialog').close();renderAll();
   }catch(error){if(button){button.disabled=false;button.textContent='删除订单';}window.alert(`删除订单失败：${error.message}`);}
@@ -966,7 +993,6 @@ async function deleteOrder(id){
 function refreshFormPreview(){const type=byId('formType').value;const gmv=Number(byId('gmv').value||0);const cost=Number(byId('cost').value||0);if(type==='hotel'){const rooms=Number(byId('rooms').value||1),nights=Number(byId('nights').value||0);byId('quantityPreview').textContent=`住宿：${rooms} 间 × ${nights} 晚 = ${rooms*nights} 房晚`;}else byId('quantityPreview').textContent=`机票：${Number(byId('tickets').value||0)} 张`;
   byId('profitPreview').textContent=compactCurrency(byId('settlementMode')?.value==='guest_pay_commission'?Number(byId('commissionReceived')?.value||0)-Number(byId('directCost')?.value||0):gmv-cost);
 }
-function evaluateCalculation(expression){const normalized=expression.replaceAll('×','*').replaceAll('÷','/').replaceAll('−','-').replaceAll('，',',').replaceAll(',','').trim();if(!normalized||!/^[0-9+\-*/().\s]+$/.test(normalized))throw new Error('请输入有效的算式');const result=Function(`"use strict"; return (${normalized})`)();if(!Number.isFinite(result))throw new Error('计算结果无效');return Math.round((result+Number.EPSILON)*100)/100;}
 function openCalculator(target){calculatorTarget=target;const input=byId(target);byId('calculatorTitle').textContent=`计算 ${target==='gmv'?'GMV / 售价':target==='cost'?'成本金额':'已收金额'}`;byId('calcExpression').value=input.value||'';byId('calcHint').textContent='支持 + − × ÷ 和括号';byId('calcHint').classList.remove('error');byId('calculatorDialog').showModal();byId('calcExpression').focus();}
 function calculateAndPreview(){try{const result=evaluateCalculation(byId('calcExpression').value);byId('calcExpression').value=String(result);byId('calcHint').textContent=`结果：${compactCurrency(result)}`;byId('calcHint').classList.remove('error');return result;}catch(error){byId('calcHint').textContent=error.message;byId('calcHint').classList.add('error');return null;}}
 function setOrderType(type){byId('formType').value=type;document.querySelectorAll('[data-order-type]').forEach(b=>b.classList.toggle('selected',b.dataset.orderType===type));document.querySelectorAll('.hotel-only').forEach(e=>e.classList.toggle('hidden',type!=='hotel'));document.querySelectorAll('.flight-only').forEach(e=>e.classList.toggle('hidden',type!=='flight'));byId('locationLabel').firstChild.textContent=type==='hotel'?'城市':'航线';byId('supplierLabel').firstChild.textContent=type==='hotel'?'酒店':'航司';byId('productLabel').firstChild.textContent=type==='hotel'?'房型':'航班';byId('serviceDateLabel').firstChild.textContent=type==='hotel'?'入住日期':'出发日期';byId('supplier').placeholder=type==='hotel'?'如：广州瑰丽':'如：全日空 ANA';byId('product').placeholder=type==='hotel'?'如：豪华大床':'如：NH934 · 经济舱';const current=byId('orderStatus').value;const statuses=type==='hotel'?[['booked','预订中'],['confirming','确认中'],['confirmed','已确认'],['cancelled','已取消']]:[['pending','待出票'],['ticketed','已出票'],['refunded','已退票']];byId('orderStatus').innerHTML=statuses.map(([value,label])=>`<option value="${value}">${label}</option>`).join('');if(statuses.some(([value])=>value===current))byId('orderStatus').value=current;refreshFormPreview();}
@@ -1046,7 +1072,10 @@ async function commitPendingImport(){
     const batch=await createImportBatch(file,found.sheetName,imported.length);
     if(batch?.duplicate){pendingImport={...pendingImport,duplicate:batch.duplicate};renderImportPreview();return;}
     const prepared=imported.map((order,index)=>({...order,orderCode:batch?.id?`IMP-${batch.id.slice(0,8)}-${String(found.headerRow+2+index).padStart(5,'0')}`:order.orderCode,importBatchId:batch?.id||'',sourceRow:found.headerRow+2+index}));
-    orders=prepared;await saveOrdersBatch();
+    const preparedIds=new Set(prepared.map(order=>String(order.id)));
+    orders=[...prepared,...orders.filter(order=>!preparedIds.has(String(order.id)))];
+    await saveOrdersBatch();
+    await loadCloudData({allowMigration:false,silent:true});
     if(batch?.id&&ledgerAvailable){for(const order of prepared){if(order.received)await saveLedgerTransaction({orderId:order.id,kind:'customer_receipt',amount:order.received,date:order.orderDate||order.serviceDate,note:'导入订单收款汇总',source:'import'});if(order.supplierPaid)await saveLedgerTransaction({orderId:order.id,kind:'supplier_payment',amount:-order.supplierPaid,date:order.orderDate||order.serviceDate,note:'导入供应商付款汇总',source:'import'});if(order.commissionReceived)await saveLedgerTransaction({orderId:order.id,kind:'commission_receipt',amount:order.commissionReceived,date:order.commissionReceivedDate||order.orderDate||order.serviceDate,note:'导入平台返佣汇总',source:'import'});}}
     pendingImport=null;activeType='all';dateField='orderDate';dateStart='';dateEnd='';statusFilter='all';paymentFilter='all';supplierPaymentFilter='all';locationFilter='';supplierFilter='';searchTerm='';byId('typeSelect').value='all';byId('dateField').value='orderDate';byId('dateStart').value='';byId('dateEnd').value='';byId('paymentFilter').value='all';byId('supplierPaymentFilter').value='all';byId('locationFilter').value='';byId('supplierFilter').value='';byId('orderSearch').value='';updateStatusOptions();byId('periodSelect').value='all';byId('periodMonth').value=today.slice(0,7);renderAll();status.innerHTML=`已导入 ${prepared.length} 笔订单 · 工作表：${escapeHtml(found.sheetName)} · 文件：${escapeHtml(file.name)}${batch?.id?` · 批次 ${escapeHtml(batch.id)}`:''}`;if(batch?.id)status.innerHTML+=`<button class="button quiet" type="button" data-revert-import="${escapeHtml(batch.id)}">撤回本批次</button>`;status.classList.add('success');showView('orders');window.alert(`已成功导入 ${prepared.length} 笔真实订单。`);
   }catch(error){status.textContent=`导入失败：${error.message}`;status.classList.remove('success');window.alert(`导入失败：${error.message}`);}
