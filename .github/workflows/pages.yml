@@ -31,6 +31,10 @@ jobs:
         run: npm test
 
   deploy:
+    # GitHub Free does not expose Pages for private repositories. Keep the
+    # test gate active while skipping the public-site job until Pages is
+    # enabled by the account or the repository becomes public.
+    if: ${{ github.event.repository.visibility == 'public' }}
     needs: test
     environment:
       name: github-pages
