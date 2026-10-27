@@ -52,6 +52,39 @@
   .detail-actions{gap:8px;flex-wrap:wrap}
   .detail-actions>div{display:flex;gap:6px;flex-wrap:wrap}
 }
+
+/* Desktop distribution panels: use the available width for the bars and keep
+   both panels compact instead of letting the grid stretch their empty bottoms. */
+@media (min-width: 1101px) {
+  .dashboard-grid .city-panel,
+  .dashboard-grid .platform-panel {
+    align-self: start;
+    min-height: 0 !important;
+    height: auto;
+  }
+
+  .dashboard-grid .city-chart-wrap {
+    min-height: 0 !important;
+    padding: 8px 24px 16px !important;
+  }
+
+  .dashboard-grid .distribution-bars {
+    gap: 12px;
+    padding: 4px 0 4px;
+  }
+
+  .dashboard-grid .distribution-row {
+    grid-template-columns: 180px minmax(180px, 1fr) 86px 48px;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-grid .distribution-row {
+    grid-template-columns: minmax(70px, 1fr) minmax(70px, 1fr) 64px 38px;
+    gap: 6px;
+  }
+}
 .payment-stack{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:92px}.payment-stack .status,.payment-stack .payment-platform,.payment-stack .settlement-badge{margin-top:0}.payment-stack .payment-platform{width:max-content;max-width:100%;white-space:normal;overflow-wrap:anywhere;line-height:1.35}
 .earnings-grid{display:none}
 .distribution-total{display:flex;align-items:baseline;gap:8px;padding-bottom:3px}.distribution-total strong{font:700 22px "DM Mono",monospace}.distribution-total span{font-size:10px;color:var(--muted)}
