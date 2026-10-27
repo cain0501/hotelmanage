@@ -614,7 +614,7 @@ const issueEntries = () => orders.flatMap(order => {
   return [...new Set(issues)].map(issue => ({ order, issue }));
 });
 
-function filteredOrders() {
+function legacyFilteredOrders() {
   return orders.filter(order => { const date=order[dateField]||''; return (activeType === 'all' || order.type === activeType) && (statusFilter==='all'||order.status===statusFilter) && (paymentFilter==='all'||customerPaymentStatus(order)===paymentFilter) && (supplierPaymentFilter==='all'||supplierPaymentStatus(order)===supplierPaymentFilter) && (invoiceFilter==='all'||invoiceStatus(order)===invoiceFilter) && `${order.customer} ${order.booker} ${order.supplier} ${order.product} ${order.confirmation} ${order.location}`.toLowerCase().includes(searchTerm.toLowerCase()) && String(order.location||'').toLowerCase().includes(locationFilter.toLowerCase()) && String(order.supplier||'').toLowerCase().includes(supplierFilter.toLowerCase()) && (!dateStart || date>=dateStart) && (!dateEnd || date<=dateEnd); });
 }
 function updateStatusOptions(){const type=byId('typeSelect').value;const options=[['all','全部状态'],...(type==='flight'?[['pending','待出票'],['ticketed','已出票'],['refunded','已退票']]:type==='hotel'?[['booked','预订中'],['confirming','确认中'],['confirmed','已确认'],['cancelled','已取消']]:[['booked','预订中'],['confirming','确认中'],['confirmed','已确认'],['cancelled','已取消'],['pending','待出票'],['ticketed','已出票'],['refunded','已退票']])];byId('statusFilter').innerHTML=options.map(([v,t])=>`<option value="${v}">${t}</option>`).join('');if(options.some(([v])=>v===statusFilter))byId('statusFilter').value=statusFilter;else{statusFilter='all';byId('statusFilter').value='all';}}
@@ -624,8 +624,85 @@ function syncDashboardMonthPicker() {
   if(select.value==='current') month.value=today.slice(0,7);
   month.disabled=select.value==='all';
 }
-function dashboardOrders() { const period=byId('periodSelect').value; const month=period==='current'?today.slice(0,7):byId('periodMonth').value; const active=orders.filter(order=>!isFailedOrder(order)); return period==='all' ? active : active.filter(order => (order[dashboardDateField] || '').slice(0, 7) === month); }
-function dashboardOtherIncomes() { const period=byId('periodSelect').value; const month=period==='current'?today.slice(0,7):byId('periodMonth').value; return period==='all' ? otherIncomes : otherIncomes.filter(item => (item.date || '').slice(0, 7) === month); }
+function legacyDashboardOrders() { const period=byId('periodSelect').value; const month=period==='current'?today.slice(0,7):byId('periodMonth').value; const active=orders.filter(order=>!isFailedOrder(order)); return period==='all' ? active : active.filter(order => (order[dashboardDateField] || '').slice(0, 7) === month); }
+function legacyDashboardOtherIncomes() { const period=byId('periodSelect').value; const month=period==='current'?today.slice(0,7):byId('periodMonth').value; return period==='all' ? otherIncomes : otherIncomes.filter(item => (item.date || '').slice(0, 7) === month); }
+let dashboardDrillFilter='';
+const dashboardDateValue = order => String(order?.[dashboardDateField] || order?.orderDate || order?.serviceDate || '');
+function periodWindow(period,month){
+  if(period==='all')return null;
+  const key=period==='current'?today.slice(0,7):month||today.slice(0,7);
+  const [year,monthNumber]=key.split('-').map(Number);
+  if(!year||!monthNumber)return null;
+  const lastDay=new Date(Date.UTC(year,monthNumber,0)).getUTCDate();
+  return {start:`${key}-01`,end:`${key}-${String(lastDay).padStart(2,'0')}`,month:key};
+}
+function previousWindow(window){
+  if(!window)return null;
+  const [year,monthNumber]=window.month.split('-').map(Number);
+  const previousDate=new Date(Date.UTC(year,monthNumber-2,1));
+  const previousKey=`${previousDate.getUTCFullYear()}-${String(previousDate.getUTCMonth()+1).padStart(2,'0')}`;
+  return periodWindow('custom',previousKey);
+}
+function ordersForWindow(window){
+  const active=orders.filter(order=>!isFailedOrder(order));
+  return window?active.filter(order=>{const date=dashboardDateValue(order);return date>=window.start&&date<=window.end;}):active;
+}
+function incomesForWindow(window){
+  return window?otherIncomes.filter(item=>{const date=String(item.date||'');return date>=window.start&&date<=window.end;}):otherIncomes;
+}
+function receivableOrdersForWindow(window){
+  return ordersForWindow(window).filter(order=>customerReceivable(order)&&String(order.serviceDate||order.orderDate||'')<=today);
+}
+function dashboardSnapshot(window){
+  const orderData=ordersForWindow(window),incomeData=incomesForWindow(window);
+  const orderProfit=orderData.reduce((sum,order)=>sum+profit(order),0);
+  const otherNet=incomeData.reduce((sum,item)=>sum+otherIncomeNet(item),0);
+  const receivableOrders=receivableOrdersForWindow(window);
+  const payableOrders=orderData.filter(supplierPayable);
+  const payable=payableOrders.reduce((sum,order)=>sum+Math.max(0,Number(order.cost||0)-supplierPaid(order)),0);
+  const commissionOrders=orderData.filter(order=>isCommissionOrder(order));
+  const commission=commissionOrders.reduce((sum,order)=>sum+commissionOutstanding(order),0);
+  const supplierCost=orderData.filter(order=>!isCommissionOrder(order)).reduce((sum,order)=>sum+Number(order.cost||0),0);
+  const directCostAmount=commissionOrders.reduce((sum,order)=>sum+directCost(order),0);
+  const orderRevenue=orderProfit+supplierCost+directCostAmount;
+  return {orders:orderData,incomes:incomeData,orderProfit,otherNet,net:orderProfit+otherNet,receivable:receivableOrders.reduce((sum,order)=>sum+Math.max(0,Number(order.gmv||0)-Number(order.received||0)),0),receivableOrders,payable,payableOrders,commission,commissionOrders,orderRevenue,supplierCost,directCost:directCostAmount};
+}
+function dashboardPeriodWindow(){return periodWindow(byId('periodSelect')?.value||'current',byId('periodMonth')?.value||today.slice(0,7));}
+function dashboardDelta(current,previous,inverse){
+  if(!dashboardPeriodWindow()||previous===null||previous===undefined)return {text:'—',className:''};
+  if(current===0&&previous===0)return {text:'—',className:''};
+  if(previous===0)return {text:'↑ 新增',className:inverse?'is-bad':'is-good'};
+  const change=(current-previous)/Math.abs(previous),direction=change>=0?'↑':'↓';
+  const good=inverse?change<=0:change>=0;
+  return {text:`${direction} ${Math.abs(change*100).toFixed(1)}%`,className:good?'is-good':'is-bad'};
+}
+function ensureDashboardKpiUI(){
+  const mapping=[['receivable','receivable'],['payable','payable'],['commissionReceivable','commission']];
+  mapping.forEach(([id,drill])=>{const value=byId(id),card=value?.closest('.metric-card');if(!card)return;card.dataset.drill=drill;card.tabIndex=0;card.setAttribute('role','button');let delta=card.querySelector('.metric-delta');if(!delta){delta=document.createElement('small');delta.className='metric-delta';const hint=byId(`${id}Hint`);hint?.after(delta);}delta.dataset.deltaFor=drill;});
+  const hero=byId('heroGmv')?.closest('.hero-strip');if(hero){hero.dataset.drill='net';hero.tabIndex=0;hero.setAttribute('role','button');let delta=hero.querySelector('.hero-delta');if(!delta){delta=document.createElement('span');delta.className='hero-delta';byId('heroMeta')?.after(delta);}}
+  [['hotelOrders','hotel'],['flightOrders','flight']].forEach(([id,drill])=>{const card=byId(id)?.closest('.metric-card');if(card){card.dataset.drill=drill;card.tabIndex=0;card.setAttribute('role','button');}});
+}
+function setDashboardDelta(drill,current,previous,inverse=false){const delta=dashboardDelta(current,previous,inverse);const node=document.querySelector(`[data-delta-for="${drill}"]`);if(node){node.textContent=delta.text;node.className=`metric-delta ${delta.className}`;}const heroDelta=document.querySelector('.hero-delta');if(drill==='net'&&heroDelta){heroDelta.textContent=delta.text;heroDelta.className=`hero-delta ${delta.className}`;}}
+function renderDashboardComparisons(){
+  ensureDashboardKpiUI();
+  const current=dashboardSnapshot(dashboardPeriodWindow()),previousWindowValue=previousWindow(dashboardPeriodWindow()),previous=previousWindowValue?dashboardSnapshot(previousWindowValue):null;
+  byId('receivable').textContent=compactCurrency(current.receivable);byId('receivableHint').textContent=`${current.receivableOrders.length} 笔需跟进`;
+  byId('payable').textContent=compactCurrency(current.payable);byId('payableHint').textContent=`${current.payableOrders.length} 笔需跟进`;
+  byId('commissionReceivable').textContent=compactCurrency(current.commission);byId('commissionReceivableHint').textContent=`${current.commissionOrders.filter(order=>commissionOutstanding(order)>0).length} 笔待到账`;
+  setDashboardDelta('net',current.net,previous?.net,null);setDashboardDelta('receivable',current.receivable,previous?.receivable,true);setDashboardDelta('payable',current.payable,previous?.payable,true);setDashboardDelta('commission',current.commission,previous?.commission,true);
+}
+function dashboardFilterMatch(order){
+  if(dashboardDrillFilter==='receivable')return receivableOrdersForWindow(null).some(item=>item.id===order.id);
+  if(dashboardDrillFilter==='payable')return supplierPayable(order);
+  if(dashboardDrillFilter==='commission')return isCommissionOrder(order)&&commissionOutstanding(order)>0;
+  if(dashboardDrillFilter==='hotel'||dashboardDrillFilter==='flight')return order.type===dashboardDrillFilter;
+  return true;
+}
+function filteredOrders(){
+  return orders.filter(order=>{const date=order[dateField]||'';const customerFilter=paymentFilter==='outstanding'?['unpaid','partial'].includes(customerPaymentStatus(order)):paymentFilter==='all'||customerPaymentStatus(order)===paymentFilter;const supplierFilterMatch=supplierPaymentFilter==='outstanding'?['unpaid','partial'].includes(supplierPaymentStatus(order)):supplierPaymentFilter==='all'||supplierPaymentStatus(order)===supplierPaymentFilter;return dashboardFilterMatch(order)&&(activeType==='all'||order.type===activeType)&&(statusFilter==='all'||order.status===statusFilter)&&customerFilter&&supplierFilterMatch&&(invoiceFilter==='all'||invoiceStatus(order)===invoiceFilter)&&`${order.customer} ${order.booker} ${order.supplier} ${order.product} ${order.confirmation} ${order.location}`.toLowerCase().includes(searchTerm.toLowerCase())&&String(order.location||'').toLowerCase().includes(locationFilter.toLowerCase())&&String(order.supplier||'').toLowerCase().includes(supplierFilter.toLowerCase())&&(!dateStart||date>=dateStart)&&(!dateEnd||date<=dateEnd);});
+}
+function dashboardOrders(){return ordersForWindow(dashboardPeriodWindow());}
+function dashboardOtherIncomes(){return incomesForWindow(dashboardPeriodWindow());}
 function otherIncomeNet(item) { return Number(item.amount || 0) - Number(item.expense || 0); }
 function transactionRows() {
   const orderRows=dashboardOrders().flatMap(order => {
@@ -670,7 +747,7 @@ function transactionRowsWithSplit() {
 transactionRows = transactionRowsWithSplit;
 
 function renderDashboard() {
-  syncDashboardMonthPicker();
+  placeReceivableAgingPanel(); syncDashboardMonthPicker();
   const data = dashboardOrders(); const total = sums(data);
   const incomeData = dashboardOtherIncomes(); const otherIncomeTotal = incomeData.reduce((sum,item)=>sum+Number(item.amount||0),0); const otherExpenseTotal = incomeData.reduce((sum,item)=>sum+Number(item.expense||0),0); const otherNet = incomeData.reduce((sum,item)=>sum+otherIncomeNet(item),0); const combinedNet = total.profit+otherNet;
   const hotels = data.filter(o => o.type === 'hotel'); const flights = data.filter(o => o.type === 'flight');
@@ -687,9 +764,9 @@ function renderDashboard() {
   byId('ticketCount').textContent = flights.reduce((n,o)=>n+Number(o.tickets||0),0);
   const outstanding = data.filter(customerReceivable); const due = outstanding.reduce((n,o)=>n+Math.max(0,o.gmv-o.received),0); const payable = data.filter(supplierPayable); const payableDue=payable.reduce((n,o)=>n+Math.max(0,Number(o.cost||0)-supplierPaid(o)),0); const commissionDue=data.filter(isCommissionOrder).reduce((n,o)=>n+commissionOutstanding(o),0); const commissionOrders=data.filter(o=>isCommissionOrder(o)&&commissionOutstanding(o)>0).length;
   byId('receivable').textContent = compactCurrency(due); byId('receivableHint').textContent = `${outstanding.length} 笔需跟进`; byId('payable').textContent=compactCurrency(payableDue); byId('payableHint').textContent=`${payable.length} 笔需跟进`; byId('commissionReceivable').textContent=compactCurrency(commissionDue); byId('commissionReceivableHint').textContent=`${commissionOrders} 笔待到账`;
-  renderTrend(); renderQueue(); renderRanking(); renderBookerRanking(); renderRecentLedger(); renderPaymentPlatformDistribution();
+  renderDashboardComparisons(); renderTrend(); renderQueue(); renderRankingResponsive(); renderBookerRanking(); renderRecentLedger(); renderPaymentPlatformDistribution(); renderCityDistribution(); renderReceivableAging(); renderProfitWaterfallResponsive();
 }
-function renderTrend() {
+function legacyRenderTrend() {
   const monthly = {};
   dashboardOrders().forEach(o => { const key=(o[dashboardDateField] || '').slice(0,7) || '—'; monthly[key] ||= {gmv:0,profit:0}; monthly[key].gmv += Number(o.gmv); monthly[key].profit += profit(o); });
   const items=Object.entries(monthly).sort(([a],[b])=>a.localeCompare(b)).slice(-6); const max=Math.max(...items.map(([,v])=>v.gmv),1);
@@ -699,7 +776,7 @@ function renderQueue() {
   const issues=issueEntries().slice(0,5); byId('issueCount').textContent=issueEntries().length;
   byId('actionQueue').innerHTML=issues.length?issues.map(({order,issue})=>`<button class="action-row" data-detail="${escapeHtml(order.id)}"><span class="badge ${issue.includes('待收')?'warn':''}">${escapeHtml(typeName(order))}</span><span><p>${escapeHtml(issue)}</p><small>${escapeHtml(orderCode(order))} · ${escapeHtml(order.customer||'')}</small></span></button>`).join(''):'<div class="empty-state">暂无待处理事项</div>';
 }
-function renderRanking() {
+function legacyRenderRanking() {
   const ranked=Object.values(orders.filter(o=>o.type==='hotel').reduce((map,o)=>{(map[o.supplier] ||= 0);map[o.supplier]+=Number(o.gmv);return map},{})).length;
   const list=Object.entries(dashboardOrders().filter(o=>o.type==='hotel').reduce((map,o)=>{map[o.supplier]=(map[o.supplier]||0)+Number(o.gmv);return map},{})).sort((a,b)=>b[1]-a[1]).slice(0,10);
   const max=list[0]?.[1]||1; byId('hotelRanking').innerHTML=list.map(([name,amount],i)=>`<div class="rank-row"><b>0${i+1}</b><div><span class="rank-name">${escapeHtml(name)}</span><div class="rank-line"><span style="width:${amount/max*100}%"></span></div></div><strong>${compactCurrency(amount)}</strong></div>`).join('') || '<div class="empty-state">暂无酒店订单</div>';
@@ -709,18 +786,56 @@ function renderBookerRanking() {
   const list=Object.entries(bookerMap).sort((a,b)=>b[1].gmv-a[1].gmv).slice(0,10);const max=list[0]?.[1].gmv||1;
   byId('bookerRanking').innerHTML=list.map(([name,item],i)=>`<div class="rank-row booker-rank-row"><b>${String(i+1).padStart(2,'0')}</b><div><span class="rank-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><div class="rank-line"><span style="width:${item.gmv/max*100}%"></span></div><small class="rank-sub">${item.orders} 笔订单</small></div><strong>${compactCurrency(item.gmv)}</strong></div>`).join('')||'<div class="empty-state">暂无预订人数据</div>';
 }
-function renderPaymentPlatformDistribution() {
+function legacyRenderPaymentPlatformDistribution() {
   const platformMap=dashboardOrders().reduce((map,order)=>{const platform=platformName(order);map[platform]=(map[platform]||0)+Number(order.gmv||0);return map},{});
   const sorted=Object.entries(platformMap).sort((a,b)=>b[1]-a[1]);const total=sorted.reduce((sum,[,value])=>sum+value,0);const top=sorted.slice(0,7);const rest=sorted.slice(7).reduce((sum,[,value])=>sum+value,0);if(rest>0)top.push(['其他',rest]);
   const colors=['#1f5b4e','#bd843b','#6d9b8d','#d6b47a','#8b6d4b','#47796f','#b6c9c0','#d8d1c4'];let cursor=0;const stops=top.map(([name,value],index)=>{const start=cursor;cursor+=total?value/total*360:0;return `${colors[index%colors.length]} ${start}deg ${cursor}deg`;});
   byId('platformTotal').textContent=compactCurrency(total);byId('platformDonut').style.background=top.length?`conic-gradient(${stops.join(',')})`:'conic-gradient(#ded7c7 0deg 360deg)';byId('platformLegend').innerHTML=top.map(([name,value],index)=>{const share=total?Math.round(value/total*100):0;return `<div class="city-legend-row" title="${escapeHtml(name)} · ${compactCurrency(value)}" style="--legend-delay:${index*65}ms;--city-share:${share}%;color:${colors[index%colors.length]}"><i style="background:${colors[index%colors.length]}"></i><span>${escapeHtml(name)}</span><b>${share}%</b></div>`}).join('')||'<div class="empty-state">暂无付款平台数据</div>';
 }
-function renderCityDistribution() {
+function legacyRenderCityDistribution() {
   const cityMap=dashboardOrders().reduce((map,order)=>{const city=String(order.location||'未填写').trim()||'未填写';map[city]=(map[city]||0)+Number(order.gmv||0);return map},{});
   const sorted=Object.entries(cityMap).sort((a,b)=>b[1]-a[1]);const total=sorted.reduce((n,[,value])=>n+value,0);const top=sorted.slice(0,7);const rest=sorted.slice(7).reduce((n,[,value])=>n+value,0);if(rest>0)top.push(['其他',rest]);const colors=['#1f5b4e','#bd843b','#6d9b8d','#d6b47a','#8b6d4b','#47796f','#b6c9c0','#d8d1c4'];let cursor=0;const stops=top.map(([city,value],index)=>{const start=cursor;cursor+=total?value/total*360:0;return `${colors[index%colors.length]} ${start}deg ${cursor}deg`;});byId('cityTotal').textContent=compactCurrency(total);byId('cityDonut').style.background=top.length?`conic-gradient(${stops.join(',')})`:'conic-gradient(#ded7c7 0deg 360deg)';byId('cityLegend').innerHTML=top.map(([city,value],index)=>{const share=total?Math.round(value/total*100):0;return `<div class="city-legend-row" title="${escapeHtml(city)} · ${compactCurrency(value)}" style="--legend-delay:${index*65}ms;--city-share:${share}%;color:${colors[index%colors.length]}"><i style="background:${colors[index%colors.length]}"></i><span>${escapeHtml(city)}</span><b>${share}%</b></div>`}).join('')||'<div class="empty-state">暂无城市数据</div>';
 }
 function renderRecentLedger() { byId('recentLedger').innerHTML=transactionRows().slice(0,4).map(row=>`<div class="mini-ledger-row"><div><p>${escapeHtml(row.kind)} · ${escapeHtml(row.party||'')}</p><small>${dateFmt(row.date)} · ${escapeHtml(row.order.id)}</small></div><strong class="amount ${row.amount>=0?'income':'expense'}">${row.amount>=0?'+':'−'}${compactCurrency(Math.abs(row.amount))}</strong></div>`).join('') || '<div class="empty-state">暂无资金流水</div>'; }
 
+const dashboardCharts=new Map();
+let dashboardResizeTimer=null;
+const dashboardColor=token=>getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+function legacyDashboardChart(id){
+  const el=byId(id);if(!el||!globalThis.echarts)return null;
+  const chart=globalThis.echarts.getInstanceByDom(el)||globalThis.echarts.init(el);dashboardCharts.set(id,chart);return chart;
+}
+function disposeDashboardChart(id){const chart=dashboardCharts.get(id)||byId(id)&&globalThis.echarts?.getInstanceByDom(byId(id));if(chart){chart.dispose();dashboardCharts.delete(id);}}
+function disposeDashboardCharts(){[...dashboardCharts.keys()].forEach(disposeDashboardChart);}
+function resizeDashboardCharts(){dashboardCharts.forEach(chart=>chart.resize());}
+window.addEventListener('resize',()=>{clearTimeout(dashboardResizeTimer);dashboardResizeTimer=setTimeout(resizeDashboardCharts,150);},{passive:true});
+const dashboardShowViewBase=showView;
+showView=function(view){if(view!=='dashboard')disposeDashboardCharts();dashboardShowViewBase(view);if(view==='dashboard'){renderDashboard();requestAnimationFrame(resizeDashboardCharts);}};
+function resolveDashboardColors(value){if(Array.isArray(value))return value.map(resolveDashboardColors);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,resolveDashboardColors(item)]));if(typeof value==='string'&&value.startsWith('var(')){const token=value.slice(4,-1).trim();return dashboardColor(token)||value;}return value;}
+function dashboardChart(id){const el=byId(id);if(!el||!globalThis.echarts)return null;const chart=globalThis.echarts.getInstanceByDom(el)||globalThis.echarts.init(el);if(!chart.__dashboardColorPatch){const setOption=chart.setOption.bind(chart);chart.setOption=(option,...args)=>setOption(resolveDashboardColors(option),...args);chart.__dashboardColorPatch=true;}dashboardCharts.set(id,chart);return chart;}
+function monthLabel(key){const [year,monthNumber]=String(key||'').split('-');return year&&monthNumber?`${year}-${monthNumber}`:key||'—';}
+function openDashboardMonthDrill(month){
+  dashboardDrillFilter='';activeType='all';statusFilter='all';paymentFilter='all';supplierPaymentFilter='all';invoiceFilter='all';searchTerm='';locationFilter='';supplierFilter='';dateField=dashboardDateField;const window=periodWindow('custom',month);dateStart=window?.start||'';dateEnd=window?.end||'';byId('dateField').value=dateField;byId('dateStart').value=dateStart;byId('dateEnd').value=dateEnd;byId('typeSelect').value='all';updateStatusOptions();byId('paymentFilter').value='all';byId('supplierPaymentFilter').value='all';byId('invoiceFilter').value='all';byId('orderSearch').value='';byId('locationFilter').value='';byId('supplierFilter').value='';showView('orders');renderOrders();const banner=byId('ordersDrillBanner');if(banner){banner.innerHTML=`已从趋势图下钻：${escapeHtml(monthLabel(month))}（${filteredOrders().length} 笔） <button class="text-button" type="button" data-clear-dashboard-drill>清除下钻</button>`;banner.hidden=false;}}
+function renderTrend(){
+  const el=byId('trendChart');if(!el)return;const grouped={};orders.filter(order=>!isFailedOrder(order)).forEach(order=>{const key=dashboardDateValue(order).slice(0,7);if(!key)return;grouped[key]||={gmv:0,profit:0};grouped[key].gmv+=Number(order.gmv||0);grouped[key].profit+=profit(order);});const items=Object.entries(grouped).sort(([a],[b])=>a.localeCompare(b)).slice(-12);
+  if(!items.length){disposeDashboardChart('trendChart');el.innerHTML='<div class="chart-empty">本月暂无订单</div>';return;}
+  const chart=dashboardChart('trendChart');if(!chart){el.innerHTML='<div class="chart-empty">趋势图组件未加载</div>';return;}
+  chart.setOption({animation:true,tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:params=>{const item=params[0]?.data;const row=items.find(([key])=>key===item?.month)||items[params[0]?.dataIndex];return row?`${monthLabel(row[0])}<br/>GMV ${compactCurrency(row[1].gmv)}<br/>利润率 ${row[1].gmv?`${(row[1].profit/row[1].gmv*100).toFixed(1)}%`:'—'}`:'';}},grid:{left:46,right:46,top:28,bottom:42},legend:{top:0,right:0,textStyle:{fontSize:10}},xAxis:{type:'category',data:items.map(([key])=>monthLabel(key)),axisLabel:{fontFamily:'DM Mono',fontSize:10}},yAxis:[{type:'value',name:'GMV',axisLabel:{formatter:value=>compactCurrency(value),fontSize:10}},{type:'value',name:'利润率',axisLabel:{formatter:value=>`${value}%`,fontSize:10},splitLine:{show:false}}],dataZoom:window.innerWidth>720?[{type:'inside',start:Math.max(0,100-items.length/12*100),end:100}]:[],series:[{name:'GMV',type:'bar',barMaxWidth:22,itemStyle:{color:'var(--gold)'},data:items.map(([month,row])=>({value:row.gmv,month}))},{name:'利润率',type:'line',smooth:true,yAxisIndex:1,symbolSize:7,lineStyle:{width:3,color:'var(--ink-2)'},itemStyle:{color:'var(--ink-2)'},data:items.map(([month,row])=>({value:row.gmv?(row.profit/row.gmv*100):0,month}))}]},{notMerge:false});
+  chart.off('click');chart.on('click',params=>{if(params.componentType==='series'&&params.data?.month)openDashboardMonthDrill(params.data.month);});
+}
+function distributionRows(map){const sorted=Object.entries(map).sort((a,b)=>b[1]-a[1]);const other=sorted.slice(5).reduce((sum,[,value])=>sum+value,0);const rows=sorted.slice(0,5);if(other>0)rows.push(['其它',other]);return rows;}
+function renderDistributionBars(selector,map,totalLabel){const wrap=document.querySelector(selector);if(!wrap)return;const total=Object.values(map).reduce((sum,value)=>sum+Number(value||0),0),rows=distributionRows(map);if(!rows.length){wrap.innerHTML='<div class="chart-empty">暂无分布数据</div>';return;}const max=rows[0]?.[1]||1;wrap.innerHTML=`<div class="distribution-bars"><div class="distribution-total"><strong>${compactCurrency(total)}</strong><span>${totalLabel}</span></div>${rows.map(([name,value],index)=>{const share=total?value/total*100:0;return `<div class="distribution-row ${index===0?'is-top':''} ${name==='其它'?'is-other':''}" title="${escapeHtml(name)} · ${compactCurrency(value)}"><span class="distribution-name">${escapeHtml(name)}</span><span class="distribution-track"><span class="distribution-fill" style="width:${Math.max(share?2:0,Math.min(100,value/max*100))}%"></span></span><span class="distribution-amount">${compactCurrency(value)}</span><span class="distribution-share">${Math.round(share)}%</span></div>`;}).join('')}</div>`;}
+function renderPaymentPlatformDistribution(){const platformMap=dashboardOrders().reduce((map,order)=>{const platform=platformName(order);map[platform]=(map[platform]||0)+Number(order.gmv||0);return map},{});renderDistributionBars('.platform-panel .city-chart-wrap',platformMap,'平台 GMV');}
+function renderCityDistribution(){const cityMap=dashboardOrders().reduce((map,order)=>{const city=String(order.location||'未填写').trim()||'未填写';map[city]=(map[city]||0)+Number(order.gmv||0);return map},{});renderDistributionBars('#dashboardView .city-panel:not(.platform-panel) .city-chart-wrap',cityMap,'城市 GMV');}
+function placeReceivableAgingPanel(){const aging=byId('receivableAgingPanel'),grid=document.querySelector('#dashboardView .dashboard-grid');if(aging&&grid&&aging.previousElementSibling!==grid)grid.after(aging);}
+function renderReceivableAging(){const panel=byId('receivableAging'),data=dashboardOrders(),receivable=receivableOrdersForWindow(dashboardPeriodWindow()),buckets=[{label:'0–30天',amount:0},{label:'31–60天',amount:0},{label:'61–90天',amount:0},{label:'90天以上',amount:0}];if(!data.length){panel.innerHTML='<div class="chart-empty">本月暂无订单</div>';return;}receivable.forEach(order=>{const date=new Date(`${order.serviceDate||order.orderDate}T00:00:00`),days=Math.max(0,Math.floor((new Date(`${today}T00:00:00`)-date)/86400000)),index=days<=30?0:days<=60?1:days<=90?2:3;buckets[index].amount+=Math.max(0,Number(order.gmv||0)-Number(order.received||0));});const total=buckets.reduce((sum,bucket)=>sum+bucket.amount,0);panel.innerHTML=buckets.map((bucket,index)=>`<div class="aging-row ${index>=2?'is-late':''}"><span class="aging-label">${bucket.label}</span><span class="aging-track"><span class="aging-fill" style="width:${total?bucket.amount/total*100:0}%"></span></span><span class="aging-amount">${compactCurrency(bucket.amount)}</span></div>`).join('');}
+function renderProfitWaterfall(){const el=byId('profitWaterfall');if(!el)return;const snapshot=dashboardSnapshot(dashboardPeriodWindow()),hasData=snapshot.orders.length||snapshot.incomes.length;if(!hasData){disposeDashboardChart('profitWaterfall');el.innerHTML='<div class="chart-empty">本月暂无数据</div>';return;}const segments=[{name:'订单收入',value:snapshot.orderRevenue},{name:'供应商成本',value:-snapshot.supplierCost},{name:'直接费用',value:-snapshot.directCost},{name:'其它收入净额',value:snapshot.otherNet}];let running=0;const base=[],height=[];segments.forEach(segment=>{const next=running+segment.value;base.push(Math.min(running,next));height.push({value:Math.abs(segment.value),itemStyle:{color:segment.value>=0?'var(--green)':'var(--red)'}});running=next;});base.push(0);height.push({value:Math.abs(snapshot.net),itemStyle:{color:'var(--gold)'}});const labels=[...segments.map(segment=>segment.name),'综合净收益'];const chart=dashboardChart('profitWaterfall');if(!chart){el.innerHTML='<div class="chart-empty">图表组件未加载</div>';return;}chart.setOption({animation:true,tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:params=>{const index=params[0]?.dataIndex;const value=index===labels.length-1?snapshot.net:segments[index]?.value||0;return `${labels[index]}<br/>${value<0?'−':'+'}${compactCurrency(Math.abs(value))}`;}},grid:{left:48,right:18,top:24,bottom:56},xAxis:{type:'category',data:labels,axisLabel:{interval:0,rotate:labels.length>4?18:0,fontSize:10}},yAxis:{type:'value',axisLabel:{formatter:value=>compactCurrency(value),fontSize:10}},series:[{type:'bar',stack:'total',itemStyle:{color:'transparent'},emphasis:{itemStyle:{color:'transparent'}},data:base},{type:'bar',stack:'total',barMaxWidth:38,data:height}]},{notMerge:false});}
+function hotelPerformanceRows(){const map=dashboardOrders().filter(order=>order.type==='hotel').reduce((result,order)=>{const name=String(order.supplier||'未填写').trim()||'未填写';const item=result[name]||{supplier:name,gmv:0,profit:0,roomNights:0,orders:0};item.gmv+=Number(order.gmv||0);item.profit+=profit(order);item.roomNights+=roomNights(order);item.orders+=1;result[name]=item;return result},{});return Object.values(map).sort((a,b)=>b.gmv-a.gmv).slice(0,15);}
+function openSupplierDrill(supplier){dashboardDrillFilter='';activeType='hotel';statusFilter='all';paymentFilter='all';supplierPaymentFilter='all';invoiceFilter='all';searchTerm='';locationFilter='';supplierFilter=supplier;dateField=dashboardDateField;const window=dashboardPeriodWindow();dateStart=window?.start||'';dateEnd=window?.end||'';byId('typeSelect').value='hotel';updateStatusOptions();byId('dateField').value=dateField;byId('dateStart').value=dateStart;byId('dateEnd').value=dateEnd;byId('supplierFilter').value=supplier;byId('paymentFilter').value='all';byId('supplierPaymentFilter').value='all';byId('invoiceFilter').value='all';byId('orderSearch').value='';showView('orders');renderOrders();const banner=byId('ordersDrillBanner');if(banner){banner.innerHTML=`已从酒店气泡图下钻：${escapeHtml(supplier)}（${filteredOrders().length} 笔） <button class="text-button" type="button" data-clear-dashboard-drill>清除下钻</button>`;banner.hidden=false;}}
+function renderRanking(){const panel=document.querySelector('.rank-panel:not(.booker-panel)');if(panel)panel.hidden=true;const el=byId('hotelBubbleChart');if(!el)return;const rows=hotelPerformanceRows();if(!rows.length){disposeDashboardChart('hotelBubbleChart');el.innerHTML='<div class="chart-empty">暂无酒店数据</div>';return;}if(rows.length<3){disposeDashboardChart('hotelBubbleChart');const max=rows[0]?.gmv||1;el.innerHTML=`<div class="ranking bubble-fallback">${rows.map((row,index)=>`<div class="rank-row"><b>${String(index+1).padStart(2,'0')}</b><div><span class="rank-name">${escapeHtml(row.supplier)}</span><div class="rank-line"><span style="width:${row.gmv/max*100}%"></span></div></div><strong>${compactCurrency(row.gmv)}</strong></div>`).join('')}</div>`;return;}const chart=dashboardChart('hotelBubbleChart');if(!chart){el.innerHTML='<div class="chart-empty">图表组件未加载</div>';return;}const data=rows.map(row=>({name:row.supplier,value:[row.gmv,row.gmv?(row.profit/row.gmv*100):0,Math.max(row.roomNights,1),row.orders]}));chart.setOption({animation:true,tooltip:{formatter:params=>{const row=rows.find(item=>item.supplier===params.data.name);return `${escapeHtml(row.supplier)}<br/>GMV ${compactCurrency(row.gmv)}<br/>利润率 ${row.gmv?(row.profit/row.gmv*100).toFixed(1):'0.0'}%<br/>房晚 ${row.roomNights}<br/>订单 ${row.orders}`;}},grid:{left:50,right:26,top:22,bottom:42},xAxis:{type:'value',name:'GMV',axisLabel:{formatter:value=>compactCurrency(value),fontSize:10}},yAxis:{type:'value',name:'利润率',axisLabel:{formatter:value=>`${value}%`,fontSize:10}},series:[{type:'scatter',data,symbolSize:value=>Math.max(18,Math.min(68,Math.sqrt(value[2])*14)),itemStyle:{color:'var(--gold)',opacity:.82},emphasis:{itemStyle:{color:'var(--ink-2)',opacity:1}}}]},{notMerge:false});chart.off('click');chart.on('click',params=>{if(params.data?.name)openSupplierDrill(params.data.name);});}
+
+function renderRankingResponsive(){if(window.innerWidth<=720){disposeDashboardChart('hotelBubbleChart');const panel=document.querySelector('.rank-panel:not(.booker-panel)');if(panel)panel.hidden=true;return;}renderRanking();}
+function renderProfitWaterfallResponsive(){if(window.innerWidth<=720){disposeDashboardChart('profitWaterfall');return;}renderProfitWaterfall();}
 function decorateCommissionPlatformLabels(pageList) {
   const rows=[...byId('orderTable').querySelectorAll('tr[data-detail]')];
   const cards=[...byId('mobileOrderList').querySelectorAll('article[data-detail]')];
@@ -973,7 +1088,7 @@ async function confirmCleanup(){
     orders=before;saveLocalOrders();result.className='cleanup-preview error';result.innerHTML=`批量修改保存失败，已恢复修改前数据。${escapeHtml(error.message||'请稍后重试。')}`;renderAll();
   }
 }
-function renderAll(){renderDashboard();renderOrders();renderLedger();renderQuality();renderCityDistribution();renderOtherIncome();}
+function renderAll(){renderDashboard();renderOrders();renderLedger();renderQuality();renderOtherIncome();}
 
 let selectedOtherIncomeOrderIds=[];
 function orderSearchText(order){return `${orderCode(order)} ${order.id} ${order.confirmation||''} ${order.customer||''} ${order.booker||''} ${order.supplier||''} ${order.product||''} ${order.location||''}`.toLowerCase();}
@@ -1670,10 +1785,27 @@ document.addEventListener('submit',event=>{
   if(keywords)byId('knowledgeScopeText').value=[scope,'标签：'+keywords].filter(Boolean).join(' / ');
 },true);
 
+function ensureOutstandingFilterOptions(){
+  const addOption=(id,label)=>{const select=byId(id);if(select&&!select.querySelector('option[value="outstanding"]'))select.insertAdjacentHTML('beforeend',`<option value="outstanding">${label}</option>`);};
+  addOption('paymentFilter','待收款（未收款 + 部分收款）');addOption('supplierPaymentFilter','待付款（未付款 + 部分付款）');
+}
+function openDashboardDrill(drill){
+  ensureOutstandingFilterOptions();dashboardDrillFilter=drill;activeType=['hotel','flight'].includes(drill)?drill:'all';statusFilter='all';paymentFilter=drill==='receivable'?'outstanding':'all';supplierPaymentFilter=drill==='payable'?'outstanding':'all';invoiceFilter='all';searchTerm='';locationFilter='';supplierFilter='';orderPage=1;dateField=dashboardDateField;
+  const window=dashboardPeriodWindow();dateStart=window?.start||'';dateEnd=window?.end||'';
+  byId('typeSelect').value=activeType;updateStatusOptions();byId('dateField').value=dateField;byId('dateStart').value=dateStart;byId('dateEnd').value=dateEnd;byId('paymentFilter').value=paymentFilter;byId('supplierPaymentFilter').value=supplierPaymentFilter;byId('invoiceFilter').value='all';byId('orderSearch').value='';byId('locationFilter').value='';byId('supplierFilter').value='';
+  showView('orders');renderOrders();
+  const banner=byId('ordersDrillBanner');if(banner){const labels={net:'综合净收益',receivable:'待收款订单',payable:'待付款订单',commission:'待返佣订单',hotel:'酒店订单',flight:'机票订单'};banner.innerHTML=`已从经营总览下钻：${labels[drill]||'订单'}（${filteredOrders().length} 笔） <button class="text-button" type="button" data-clear-dashboard-drill>清除下钻</button>`;banner.hidden=false;}
+}
+function clearDashboardDrill(){dashboardDrillFilter='';const banner=byId('ordersDrillBanner');if(banner){banner.hidden=true;banner.textContent='';}}
 function handleDocumentClick(event){
   const target=event.target instanceof Element?event.target:event.target?.parentElement;
   if(!target)return;
   const closest=selector=>target.closest(selector);
+
+  const drill=closest('[data-drill]');
+  if(drill&&drill.dataset.drill){event.preventDefault();openDashboardDrill(drill.dataset.drill);return;}
+  const clearDrill=closest('[data-clear-dashboard-drill]');
+  if(clearDrill){clearDashboardDrill();return;}
 
   const deleteTrigger=closest('[data-delete-order]');
   if(deleteTrigger){event.preventDefault();deleteOrder(deleteTrigger.dataset.deleteOrder);return;}
@@ -1777,3 +1909,4 @@ function handleDocumentClick(event){
 }
 
 document.addEventListener('click',handleDocumentClick);
+byId('clearFilters').addEventListener('click',clearDashboardDrill);

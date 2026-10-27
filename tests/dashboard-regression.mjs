@@ -22,6 +22,19 @@ assert.match(source, /function moveSupplierPaymentLabels\(pageList\)/, 'supplier
 assert.match(source, /item\.textContent\.startsWith\('供应商：'\)/, 'supplier payment label must be removed from the payment column');
 
 const hotelGmv = 1926.98;
+assert.match(html, /echarts@5\.5\.1\/dist\/echarts\.min\.js/, 'dashboard must load the pinned ECharts runtime');
+assert.match(html, /id="receivableAging"/, 'dashboard must expose the receivable aging panel');
+assert.match(html, /id="profitWaterfall"/, 'dashboard must expose the profit waterfall panel');
+assert.match(html, /id="hotelBubbleChart"/, 'dashboard must expose the hotel bubble chart panel');
+assert.match(source, /function periodWindow\(period,month\)/, 'dashboard month comparisons must use an explicit period window');
+assert.match(source, /function previousWindow\(window\)/, 'dashboard comparisons must use the previous natural month');
+assert.match(source, /function renderDashboardComparisons\(\)/, 'dashboard KPI deltas must be rendered from one snapshot');
+assert.match(source, /slice\(-12\)/, 'trend chart must retain twelve months of data');
+assert.match(source, /echarts\.getInstanceByDom\(el\)\|\|globalThis\.echarts\.init\(el\)/, 'dashboard charts must reuse ECharts instances');
+assert.match(source, /setTimeout\(resizeDashboardCharts,150\)/, 'dashboard chart resize must be throttled');
+assert.match(source, /function renderReceivableAging\(\)/, 'dashboard must render receivable aging buckets');
+assert.match(source, /function renderProfitWaterfall\(\)/, 'dashboard must render the profit waterfall');
+assert.match(source, /function openDashboardDrill\(drill\)/, 'dashboard KPI cards must support order drill-down');
 const roomNights = 2;
 assert.equal((hotelGmv / roomNights).toFixed(2), '963.49', 'average nightly GMV calculation contract');
 

@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261027-67" />
+    <link rel="stylesheet" href="styles.css?v=20261027-68" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -335,7 +335,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-          <small class="app-version">版本 20261027-66</small>
+          <small class="app-version">版本 20261027-68</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -378,7 +378,20 @@
             <article class="metric-card commission-card"><p>待返佣</p><strong id="commissionReceivable">¥0</strong><span id="commissionReceivableHint">0 笔待到账</span></article>
           </section>
 
+          <section class="panel receivable-aging-panel" id="receivableAgingPanel">
+            <div class="panel-head"><div><p class="eyebrow">RECEIVABLE AGING</p><h2>待收款账龄分布</h2></div><span class="panel-caption">按入住 / 出发日期</span></div>
+            <div id="receivableAging" class="aging-bars"></div>
+          </section>
+
           <section class="dashboard-grid">
+            <article class="panel dashboard-chart-panel waterfall-panel" id="waterfallPanel">
+              <div class="panel-head"><div><p class="eyebrow">PROFIT WATERFALL</p><h2>利润构成</h2></div><span class="panel-caption">GMV → 成本 → 直接费用 → 其它收入</span></div>
+              <div id="profitWaterfall" class="dashboard-chart" aria-label="利润构成瀑布图"></div>
+            </article>
+            <article class="panel dashboard-chart-panel bubble-panel" id="hotelBubblePanel">
+              <div class="panel-head"><div><p class="eyebrow">HOTEL PORTFOLIO</p><h2>酒店 GMV × 利润率</h2></div><span class="panel-caption">气泡大小 = 房晚数</span></div>
+              <div id="hotelBubbleChart" class="dashboard-chart" aria-label="酒店 GMV 与利润率气泡图"></div>
+            </article>
             <article class="panel trend-panel">
               <div class="panel-head"><div><p class="eyebrow">ORDER BUSINESS</p><h2>订单 GMV 与利润走势</h2></div><span class="legend"><i></i>GMV <i></i>利润</span></div>
               <div class="trend-chart" id="trendChart" aria-label="GMV 与利润走势图"></div>
@@ -430,6 +443,7 @@
           </section>
           <div class="table-panel panel">
             <div id="importStatus" class="import-status"></div>
+            <div id="ordersDrillBanner" class="filter-result-summary" hidden></div>
             <div class="table-scroll">
               <table>
                 <thead><tr><th>订单编号</th><th>下单日期</th><th>入住 / 出发日期</th><th>客户 / 预订人</th><th>城市 / 航线</th><th>酒店 / 航司</th><th>房型 / 航班</th><th>住宿 / 票数</th><th>GMV</th><th>利润</th><th>收款 / 付款</th><th>开票状态</th><th></th></tr></thead>
@@ -725,8 +739,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
-    <script src="shared/domain.js?v=20261027-66"></script>
-    <script src="shared/calculator.js?v=20261027-66"></script>
-    <script src="app.js?v=20261027-66"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+    <script src="shared/domain.js?v=20261027-68"></script>
+    <script src="shared/calculator.js?v=20261027-68"></script>
+    <script src="app.js?v=20261027-68"></script>
   </body>
 </html>
