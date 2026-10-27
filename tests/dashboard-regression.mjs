@@ -18,6 +18,8 @@ assert.match(source, /guest_pay_commission:'客人前台支付 · 平台返佣'/
 assert.match(source, /label\.textContent=`返佣平台：\$\{platformName\(order\)\}`/, 'commission platform must be displayed separately');
 assert.match(source, /const orderCostText = order =>/, 'order cost must have a dedicated display label');
 assert.match(source, /label\.textContent=orderCostText\(order\)/, 'GMV cells must display the order cost below GMV');
+assert.match(source, /function moveSupplierPaymentLabels\(pageList\)/, 'supplier payment status must be moved to the order identity cell');
+assert.match(source, /item\.textContent\.startsWith\('供应商：'\)/, 'supplier payment label must be removed from the payment column');
 
 const hotelGmv = 1926.98;
 const roomNights = 2;

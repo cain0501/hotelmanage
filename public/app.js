@@ -755,6 +755,17 @@ function decorateGmvCostLabels(pageList) {
     }
   });
 }
+function moveSupplierPaymentLabels(pageList) {
+  const rows=[...byId('orderTable').querySelectorAll('tr[data-detail]')];
+  pageList.forEach((order,index)=>{
+    if(isCommissionOrder(order))return;
+    const row=rows[index];
+    const paymentCell=row?.cells[10];
+    const orderCell=row?.cells[0];
+    const label=[...(paymentCell?.querySelectorAll('.payment-platform')||[])].find(item=>item.textContent.startsWith('供应商：'));
+    if(label&&orderCell)orderCell.append(label);
+  });
+}
 function renderOrdersBase() {
   const list=filteredOrders().sort((a,b)=>((b[dateField] || b.orderDate || b.serviceDate || '')).localeCompare(a[dateField] || a.orderDate || a.serviceDate || ''));
   const pageCount=Math.ceil(list.length/ORDER_PAGE_SIZE); orderPage=Math.min(orderPage,pageCount||1);
@@ -763,6 +774,7 @@ function renderOrdersBase() {
   byId('mobileOrderList').innerHTML=pageList.map(order=>{const isHotel=order.type==='hotel'; const orderId=escapeHtml(order.id); return `<article class="mobile-order-card ${payment(order)==='unpaid'?'unpaid-order':''}" data-detail="${orderId}"><div class="mobile-order-head"><div><div class="mobile-order-code">${escapeHtml(orderCode(order))}</div><div class="mobile-order-title">${escapeHtml(order.supplier||'待确认')}</div><div class="mobile-order-subtitle"><span>${escapeHtml(order.product||typeName(order))}</span>${order.confirmation?`<span class="mobile-order-confirmation">确认号：${escapeHtml(order.confirmation)}</span>`:''}<span>客户：${escapeHtml(order.customer||'待补客户')}</span></div></div><span class="status ${escapeHtml(payment(order))}">${escapeHtml(paymentText(order))}</span></div><div class="mobile-order-meta"><span>下单日期<b>${dateFmt(order.orderDate||order.serviceDate)}</b></span><span>${isHotel?'入住日期':'出发日期'}<b>${dateFmt(order.serviceDate)}</b></span><span>${isHotel?'房晚':'票数'}<b>${isHotel?roomNights(order):`${escapeHtml(order.tickets||0)} 张`}</b></span></div><div class="mobile-order-money"><div><strong>${compactCurrency(order.gmv)}</strong><small>GMV · ${escapeHtml(order.location||'—')}</small></div><div><small>${isCommissionOrder(order)?`${escapeHtml(settlementText(order))} · 佣金 ${compactCurrency(commissionReceived(order))}`:escapeHtml(order.paymentPlatform||'未填付款平台')}</small><small>${escapeHtml(invoiceText(order))}</small></div></div></article>`}).join('') || '<div class="empty-state">未找到订单</div>';
   decorateCommissionPlatformLabels(pageList);
   decorateGmvCostLabels(pageList);
+  moveSupplierPaymentLabels(pageList);
   const first= list.length ? (orderPage-1)*ORDER_PAGE_SIZE+1 : 0; const last=Math.min(orderPage*ORDER_PAGE_SIZE,list.length);
   byId('orderCountLabel').textContent=list.length?`共 ${list.length} 笔订单 · 显示 ${first}-${last}`:'共 0 笔订单';
   byId('orderPagination').innerHTML=pageCount>1?`<button class="page-button" data-order-page="${orderPage-1}" ${orderPage===1?'disabled':''}>上一页</button><span>第 ${orderPage} / ${pageCount} 页</span><button class="page-button" data-order-page="${orderPage+1}" ${orderPage===pageCount?'disabled':''}>下一页</button>`:'';
