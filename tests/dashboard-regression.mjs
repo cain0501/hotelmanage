@@ -16,6 +16,8 @@ assert.match(source, /isCommissionOrder\(order\) \? order\.commissionPlatform : 
 assert.match(source, /const platformMap=dashboardOrders\(\)\.reduce\(.*platformName\(order\)/, 'payment platform distribution must use the resolved platform');
 assert.match(source, /guest_pay_commission:'客人前台支付 · 平台返佣'/, 'commission settlement text must retain the settlement mode');
 assert.match(source, /label\.textContent=`返佣平台：\$\{platformName\(order\)\}`/, 'commission platform must be displayed separately');
+assert.match(source, /const orderCostText = order =>/, 'order cost must have a dedicated display label');
+assert.match(source, /label\.textContent=orderCostText\(order\)/, 'GMV cells must display the order cost below GMV');
 
 const hotelGmv = 1926.98;
 const roomNights = 2;

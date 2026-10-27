@@ -134,15 +134,15 @@ const saveOrder = async order => {
   if (error) { setSyncStatus(`同步失败：${error.message}`, 'sync-error'); throw error; }
   setSyncStatus('已同步到云端', 'synced');
 };
-const saveLedgerTransaction = async ({ orderId, kind, amount, date, note, source='manual' }) => {
-  const record = { order_id: orderId || null, kind, amount: Number(amount || 0), occurred_at: date || today, note: note || '', source, import_key: source === 'import' && orderId ? `${orderId}::${kind}` : null };
+const saveLedgerTransaction = async ({ orderId, kind, amount, date, note, source='manual', mutationKey='' }) => {
+  const record = { order_id: orderId || null, kind, amount: Number(amount || 0), occurred_at: date || today, note: note || '', source, import_key: source === 'import' && orderId ? `${orderId}::${kind}` : null, transaction_key: mutationKey || null };
   if (!cloudReady || !currentUser || !ledgerAvailable) return;
   const { data, error } = await supabaseClient.from('ledger_transactions').insert({ ...record, user_id: currentUser.id }).select('id,order_id,kind,amount,occurred_at,note,source').single();
   if (error) {
     if (source === 'import' && error.code === '23505') return;
     throw error;
   }
-  ledgerTransactions=[rowToLedgerTransaction(data),...ledgerTransactions];
+  mergeLedgerTransaction(data);
 };
 const importFingerprint = async file => {
   const digest=await crypto.subtle.digest('SHA-256',await file.arrayBuffer());
@@ -206,6 +206,9 @@ const commissionStatus = order => order.commissionStatus || (commissionReceived(
 const commissionStatusText = order => ({ pending:'待返佣', partial:'部分返佣', received:'已返佣', none:'无佣金' })[commissionStatus(order)] || '待返佣';
 const expectedProfit = order => isCommissionOrder(order) ? commissionExpected(order) - directCost(order) : Number(order.gmv) - Number(order.cost);
 const profit = hotelDomain.orderProfit;
+const orderCostText = order => isCommissionOrder(order)
+  ? (directCost(order)>0 ? `直接费用：${compactCurrency(directCost(order))}` : '无需我方支付')
+  : `成本：${compactCurrency(order.cost)}`;
 const roomNights = hotelDomain.roomNights;
 const customerPaymentStatus = hotelDomain.customerPaymentStatus;
 const supplierPaid = order => isCommissionOrder(order)||settlementMode(order)==='no_funds' ? 0 : asNumber(order.supplierPaid);
@@ -245,6 +248,13 @@ const incomeOrderIds = item => Array.isArray(item.orderIds) ? item.orderIds : it
 const otherIncomeToRow = item => ({ id: item.id, user_id: currentUser?.id, income_date: emptyToNull(item.date) || today, name: item.name || '', payer: item.payer || '', payee: item.payee || '', order_id: incomeOrderIds(item).join(','), amount: asNumber(item.amount), expense: asNumber(item.expense) });
 const rowToOtherIncome = row => ({ id: row.id, date: row.income_date || '', name: row.name || '', payer: row.payer || '', payee: row.payee || '', orderId: row.order_id || '', orderIds: String(row.order_id || '').split(',').map(id=>id.trim()).filter(Boolean), amount: asNumber(row.amount), expense: asNumber(row.expense) });
 const rowToLedgerTransaction = row => ({ id: row.id, orderId: row.order_id || '', kind: row.kind || '', amount: asNumber(row.amount), date: row.occurred_at || '', note: row.note || '', source: row.source || 'manual' });
+const mergeLedgerTransaction = row => {
+  const next=rowToLedgerTransaction(row);
+  const index=ledgerTransactions.findIndex(item=>item.id===next.id);
+  if(index>=0)ledgerTransactions[index]=next;
+  else ledgerTransactions=[next,...ledgerTransactions];
+  return next;
+};
 function syncAiSettingsForm(){
   if(!byId('aiProvider'))return;
   byId('aiProvider').value=aiSettings.provider||'openai-compatible';byId('aiBaseUrl').value=aiSettings.baseUrl||'';byId('aiModel').value=aiSettings.model||'';byId('aiTemperature').value=aiSettings.temperature??0.1;byId('aiEnabled').checked=Boolean(aiSettings.enabled);byId('aiConfigStatus').textContent=aiSettings.enabled?'已启用':'未启用';
@@ -495,7 +505,7 @@ function applyRealtimeLedgerChange(payload) {
   if (!row?.id) return;
   const next=rowToLedgerTransaction(row);
   if (payload.eventType==='DELETE') ledgerTransactions=ledgerTransactions.filter(item=>item.id!==next.id);
-  else { const index=ledgerTransactions.findIndex(item=>item.id===next.id); if(index>=0)ledgerTransactions[index]=next; else ledgerTransactions.push(next); }
+  else mergeLedgerTransaction(row);
   ledgerAvailable=true; renderAll();
 }
 async function setupRealtime() {
@@ -724,6 +734,27 @@ function decorateCommissionPlatformLabels(pageList) {
     if(mobileMeta)mobileMeta.insertBefore(label.cloneNode(true),mobileMeta.firstChild);
   });
 }
+function decorateGmvCostLabels(pageList) {
+  const rows=[...byId('orderTable').querySelectorAll('tr[data-detail]')];
+  const cards=[...byId('mobileOrderList').querySelectorAll('article[data-detail]')];
+  pageList.forEach((order,index)=>{
+    const cell=rows[index]?.cells[8];
+    if(cell){
+      cell.classList.add('gmv-cell');
+      const label=document.createElement('small');
+      label.className='gmv-cost';
+      label.textContent=orderCostText(order);
+      cell.append(label);
+    }
+    const mobileGmv=cards[index]?.querySelector('.mobile-order-money > div:first-child');
+    if(mobileGmv){
+      const label=document.createElement('small');
+      label.className='gmv-cost';
+      label.textContent=orderCostText(order);
+      mobileGmv.append(label);
+    }
+  });
+}
 function renderOrdersBase() {
   const list=filteredOrders().sort((a,b)=>((b[dateField] || b.orderDate || b.serviceDate || '')).localeCompare(a[dateField] || a.orderDate || a.serviceDate || ''));
   const pageCount=Math.ceil(list.length/ORDER_PAGE_SIZE); orderPage=Math.min(orderPage,pageCount||1);
@@ -731,6 +762,7 @@ function renderOrdersBase() {
   byId('orderTable').innerHTML=pageList.map(order=>{const isHotel=order.type==='hotel'; const invoiceState=invoiceStatus(order); const orderId=escapeHtml(order.id); return `<tr class="clickable ${paymentIssue(order)?'unpaid-order':''}" data-detail="${orderId}"><td><span class="order-code">${escapeHtml(orderCode(order))}</span><small class="order-status">${escapeHtml(statusText(order))}</small></td><td>${dateFmt(order.orderDate || order.serviceDate)}</td><td>${dateFmt(order.serviceDate)}</td><td class="entity-cell"><strong>${escapeHtml(order.customer||'')}</strong><small>${escapeHtml(order.booker||'—')}</small></td><td>${escapeHtml(order.location||'—')}</td><td class="entity-cell"><strong>${escapeHtml(order.supplier||'')}</strong><small>${escapeHtml(typeName(order))}</small></td><td class="entity-cell product-cell"><strong>${escapeHtml(order.product||'—')}</strong>${order.confirmation?`<small class="confirmation-line">确认号：${escapeHtml(order.confirmation)}</small>`:''}</td><td>${isHotel?`${escapeHtml(order.rooms||1)} 间 × ${escapeHtml(order.nights||0)} 晚`:`${escapeHtml(order.tickets||0)} 张`}</td><td class="money">${compactCurrency(order.gmv)}</td><td class="money ${profit(order)>=0?'profit-positive':'profit-negative'}">${compactCurrency(profit(order))}</td><td><span class="status ${escapeHtml(payment(order))}">${escapeHtml(paymentText(order))}</span>${isCommissionOrder(order)?`<small class="payment-platform">${escapeHtml(commissionStatusText(order))}</small>`:`<small class="payment-platform">供应商：${escapeHtml(supplierPaymentText(order))}</small><small class="payment-platform">${escapeHtml(order.paymentPlatform||'未填付款方式')}</small>`}<small class="settlement-badge">${escapeHtml(settlementText(order))}</small></td><td><span class="status ${invoiceState==='issued'?'paid':invoiceState==='no_invoice'?'invoice-no-invoice':'pending'}">${escapeHtml(invoiceText(order))}</span>${invoiceState==='issued'&&order.invoiceCompany?`<small class="invoice-company">${escapeHtml(order.invoiceCompany)}</small>`:''}</td><td><button class="arrow" aria-label="查看订单">›</button></td></tr>`}).join('') || '<tr><td colspan="13"><div class="empty-state">未找到订单</div></td></tr>';
   byId('mobileOrderList').innerHTML=pageList.map(order=>{const isHotel=order.type==='hotel'; const orderId=escapeHtml(order.id); return `<article class="mobile-order-card ${payment(order)==='unpaid'?'unpaid-order':''}" data-detail="${orderId}"><div class="mobile-order-head"><div><div class="mobile-order-code">${escapeHtml(orderCode(order))}</div><div class="mobile-order-title">${escapeHtml(order.supplier||'待确认')}</div><div class="mobile-order-subtitle"><span>${escapeHtml(order.product||typeName(order))}</span>${order.confirmation?`<span class="mobile-order-confirmation">确认号：${escapeHtml(order.confirmation)}</span>`:''}<span>客户：${escapeHtml(order.customer||'待补客户')}</span></div></div><span class="status ${escapeHtml(payment(order))}">${escapeHtml(paymentText(order))}</span></div><div class="mobile-order-meta"><span>下单日期<b>${dateFmt(order.orderDate||order.serviceDate)}</b></span><span>${isHotel?'入住日期':'出发日期'}<b>${dateFmt(order.serviceDate)}</b></span><span>${isHotel?'房晚':'票数'}<b>${isHotel?roomNights(order):`${escapeHtml(order.tickets||0)} 张`}</b></span></div><div class="mobile-order-money"><div><strong>${compactCurrency(order.gmv)}</strong><small>GMV · ${escapeHtml(order.location||'—')}</small></div><div><small>${isCommissionOrder(order)?`${escapeHtml(settlementText(order))} · 佣金 ${compactCurrency(commissionReceived(order))}`:escapeHtml(order.paymentPlatform||'未填付款平台')}</small><small>${escapeHtml(invoiceText(order))}</small></div></div></article>`}).join('') || '<div class="empty-state">未找到订单</div>';
   decorateCommissionPlatformLabels(pageList);
+  decorateGmvCostLabels(pageList);
   const first= list.length ? (orderPage-1)*ORDER_PAGE_SIZE+1 : 0; const last=Math.min(orderPage*ORDER_PAGE_SIZE,list.length);
   byId('orderCountLabel').textContent=list.length?`共 ${list.length} 笔订单 · 显示 ${first}-${last}`:'共 0 笔订单';
   byId('orderPagination').innerHTML=pageCount>1?`<button class="page-button" data-order-page="${orderPage-1}" ${orderPage===1?'disabled':''}>上一页</button><span>第 ${orderPage} / ${pageCount} 页</span><button class="page-button" data-order-page="${orderPage+1}" ${orderPage===pageCount?'disabled':''}>下一页</button>`:'';
@@ -1033,11 +1065,15 @@ byId('orderForm').addEventListener('submit',async event=>{
   submitButton.disabled=true;
   const originalSubmitText=submitButton.textContent;
   submitButton.textContent='保存中…';
-  const type=byId('formType').value, editId=byId('orderForm').dataset.editId, existing=orders.find(order=>order.id===editId), previous=existing ? { ...existing } : null;
+  const form=byId('orderForm');
+  const type=byId('formType').value, editId=form.dataset.editId, draftId=editId||form.dataset.draftId||newOrderId(type), existing=orders.find(order=>order.id===editId), previous=existing ? { ...existing } : null;
+  if(!editId)form.dataset.draftId=draftId;
+  const mutationKey=form.dataset.saveMutationId||(globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  form.dataset.saveMutationId=mutationKey;
   const paymentStatus=byId('paymentStatus').value, paymentPlatform=byId('paymentPlatform').value.trim(), invoiceStatusValue=byId('invoiceStatus').value, invoiceCompany=byId('invoiceCompany').value.trim();
   const gmv=Number(byId('gmv').value||0); let received=Number(byId('received').value||0);
   if(paymentStatus==='paid')received=gmv; if(paymentStatus==='unpaid'||paymentStatus==='refunded')received=0;
-  const commission=byId('settlementMode').value==='guest_pay_commission'; const order={id:editId||newOrderId(type),orderCode:existing?.orderCode||nextOrderCode(),type,customer:byId('customer').value.trim(),booker:byId('booker').value.trim(),orderDate:byId('orderDate').value,serviceDate:byId('serviceDate').value,location:byId('location').value.trim(),supplier:byId('supplier').value.trim(),product:byId('product').value.trim(),confirmation:byId('confirmation').value.trim(),rooms:type==='hotel'?Number(byId('rooms').value||1):0,nights:type==='hotel'?Number(byId('nights').value||0):0,tickets:type==='flight'?Number(byId('tickets').value||1):0,gmv,cost:commission?0:Number(byId('cost').value||0),received:commission?0:received,paymentStatus:commission?'unpaid':paymentStatus,paymentPlatform,settlementMode:byId('settlementMode').value,guestPaymentTo:byId('guestPaymentTo').value.trim(),commissionPlatform:byId('commissionPlatform').value.trim(),commissionExpected:commission?Number(byId('commissionExpected').value||0):0,commissionReceived:commission?Number(byId('commissionReceived').value||0):0,commissionStatus:commission?byId('commissionStatus').value:'none',directCost:commission?Number(byId('directCost').value||0):0,commissionReceivedDate:commission?byId('commissionReceivedDate').value:'',invoiceStatus:invoiceStatusValue,invoiceCompany:invoiceStatusValue==='issued'?invoiceCompany:'',profitOverride:existing?.profitOverride ?? null,status:byId('orderStatus').value,issues:existing?.issues};
+  const commission=byId('settlementMode').value==='guest_pay_commission'; const order={id:draftId,orderCode:existing?.orderCode||nextOrderCode(),type,customer:byId('customer').value.trim(),booker:byId('booker').value.trim(),orderDate:byId('orderDate').value,serviceDate:byId('serviceDate').value,location:byId('location').value.trim(),supplier:byId('supplier').value.trim(),product:byId('product').value.trim(),confirmation:byId('confirmation').value.trim(),rooms:type==='hotel'?Number(byId('rooms').value||1):0,nights:type==='hotel'?Number(byId('nights').value||0):0,tickets:type==='flight'?Number(byId('tickets').value||1):0,gmv,cost:commission?0:Number(byId('cost').value||0),received:commission?0:received,paymentStatus:commission?'unpaid':paymentStatus,paymentPlatform,settlementMode:byId('settlementMode').value,guestPaymentTo:byId('guestPaymentTo').value.trim(),commissionPlatform:byId('commissionPlatform').value.trim(),commissionExpected:commission?Number(byId('commissionExpected').value||0):0,commissionReceived:commission?Number(byId('commissionReceived').value||0):0,commissionStatus:commission?byId('commissionStatus').value:'none',directCost:commission?Number(byId('directCost').value||0):0,commissionReceivedDate:commission?byId('commissionReceivedDate').value:'',invoiceStatus:invoiceStatusValue,invoiceCompany:invoiceStatusValue==='issued'?invoiceCompany:'',profitOverride:existing?.profitOverride ?? null,status:byId('orderStatus').value,issues:existing?.issues};
   const savedMode=byId('settlementMode').value;
   const savedCommission=savedMode==='guest_pay_commission';
   const savedNoFunds=savedMode==='no_funds';
@@ -1048,13 +1084,13 @@ byId('orderForm').addEventListener('submit',async event=>{
   if(requestedSupplierStatus==='unpaid')savedSupplierPaid=0;
   savedSupplierPaid=Math.max(0,Math.min(savedCost,savedSupplierPaid));
   Object.assign(order,{cost:savedCost,received:savedCommission||savedNoFunds?0:received,paymentStatus:savedCommission||savedNoFunds?'not_applicable':paymentStatus,customerPaymentStatus:savedCommission||savedNoFunds?'not_applicable':paymentStatus,supplierPaid:savedSupplierPaid,supplierPaymentStatus:savedCommission||savedNoFunds?'not_required':requestedSupplierStatus});
-  const ledgerChanges=[];const old=previous||{};const addLedgerDelta=(kind,delta,note)=>{if(Math.abs(Number(delta||0))>0.001)ledgerChanges.push({orderId:order.id,kind,amount:Number(delta),date:order.orderDate||order.serviceDate||today,note});};
+  const ledgerChanges=[];const old=previous||{};const addLedgerDelta=(kind,delta,note)=>{if(Math.abs(Number(delta||0))>0.001)ledgerChanges.push({orderId:order.id,kind,amount:Number(delta),date:order.orderDate||order.serviceDate||today,note,mutationKey:`${mutationKey}:${kind}`});};
   addLedgerDelta('customer_receipt',Number(order.received||0)-Number(old.received||0),`订单收款 · ${order.confirmation||orderCode(order)}`);
   addLedgerDelta('supplier_payment',-(Number(order.supplierPaid||0)-Number(old.supplierPaid||0)),`供应商结算 · ${order.confirmation||orderCode(order)}`);
   addLedgerDelta('commission_receipt',Number(order.commissionReceived||0)-Number(old.commissionReceived||0),`佣金到账 · ${order.confirmation||orderCode(order)}`);
   addLedgerDelta('direct_cost',-(Number(order.directCost||0)-Number(old.directCost||0)),`返佣订单直接费用 · ${order.confirmation||orderCode(order)}`);
   if(existing)Object.assign(existing,order);else orders.unshift(order);
-  try { await saveOrder(order); for(const change of ledgerChanges)await saveLedgerTransaction(change); saveLocalOrders(); delete byId('orderForm').dataset.editId; byId('orderDialog').close(); renderAll(); showView('orders'); openDetails(order.id); }
+  try { await saveOrder(order); for(const change of ledgerChanges)await saveLedgerTransaction(change); if(cloudReady&&currentUser)await loadCloudData({allowMigration:false,silent:true}); saveLocalOrders(); delete form.dataset.editId; delete form.dataset.draftId; delete form.dataset.saveMutationId; byId('orderDialog').close(); renderAll(); showView('orders'); openDetails(order.id); }
   catch(error) { if(existing && previous) Object.assign(existing, previous); else orders=orders.filter(item=>item.id!==order.id); saveLocalOrders(); submitButton.disabled=false; submitButton.textContent=originalSubmitText; window.alert(`保存订单失败：${error.message}`); }
 });
 byId('openOtherIncomeDialog').addEventListener('click',()=>openOtherIncomeForm());
@@ -1442,6 +1478,8 @@ function syncSettlementFields(){
 const openEditOrderSplit = openEditOrder;
 openEditOrder = function openEditOrderWithSplitFields(id){
   openEditOrderSplit(id);
+  byId('orderForm').dataset.saveMutationId='';
+  byId('orderForm').dataset.draftId='';
   const order=orders.find(item=>item.id===id);
   if(!order)return;
   byId('paymentStatus').value=customerPaymentStatus(order);
@@ -1693,6 +1731,8 @@ function handleDocumentClick(event){
   if(target.id==='applyCalculation'){const result=calculateAndPreview();if(result!==null&&calculatorTarget){byId(calculatorTarget).value=String(result);refreshFormPreview();byId('calculatorDialog').close();}return;}
   if(target.id==='importExcel'){byId('excelFile').click();return;}
   if(target.id==='openOrderDialog'){
+    delete byId('orderForm').dataset.draftId;
+    delete byId('orderForm').dataset.saveMutationId;
     byId('orderForm').reset();delete byId('orderForm').dataset.editId;byId('orderForm').dataset.saving='false';byId('formKicker').textContent='NEW TRANSACTION';byId('formHeading').textContent='新增订单';byId('formSubmit').disabled=false;byId('formSubmit').textContent='保存订单';byId('orderDate').value=today;byId('serviceDate').value=today;byId('paymentStatus').value='paid';byId('supplierPaymentStatus').value='unknown';byId('supplierPaid').value=0;byId('settlementMode').value='agency_pay';syncSettlementFields();setOrderType('hotel');byId('orderStatus').value='booked';byId('orderDialog').showModal();return;
   }
   if(target.id==='editOrder'){openEditOrder(target.dataset.id);return;}

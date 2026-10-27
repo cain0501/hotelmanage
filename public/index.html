@@ -9,13 +9,14 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261024-62" />
+    <link rel="stylesheet" href="styles.css?v=20261027-65" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
       #orderTable tr.unpaid-order td:first-child { box-shadow: inset 4px 0 0 #bd5648; }
       #orderTable tr.clickable { cursor: default; }
       #orderTable tr.clickable:hover td { background: inherit; }
+      #orderTable .gmv-cost { display:block; margin-top:4px; color:#8c867d; font:10px "DM Mono",monospace; white-space:nowrap; }
       .date-filter { display:flex; align-items:center; gap:5px; color:#817b70; font-size:12px; white-space:nowrap; }
       .date-filter select, .date-filter input { padding:8px 8px; font-size:12px; }
       #ordersView table { min-width:1160px; table-layout:fixed; }
@@ -334,7 +335,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-          <small class="app-version">版本 20261024-62</small>
+          <small class="app-version">版本 20261027-65</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -724,8 +725,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
-    <script src="shared/domain.js?v=20261024-62"></script>
-    <script src="shared/calculator.js?v=20261024-62"></script>
-    <script src="app.js?v=20261024-62"></script>
+    <script src="shared/domain.js?v=20261027-65"></script>
+    <script src="shared/calculator.js?v=20261027-65"></script>
+    <script src="app.js?v=20261027-65"></script>
   </body>
 </html>
