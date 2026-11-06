@@ -38,6 +38,9 @@ assert.match(source, /slice\(-12\)/, 'trend chart must retain twelve months of d
 assert.match(source, /echarts\.getInstanceByDom\(el\)\|\|globalThis\.echarts\.init\(el\)/, 'dashboard charts must reuse ECharts instances');
 assert.match(source, /setTimeout\(resizeDashboardCharts,150\)/, 'dashboard chart resize must be throttled');
 assert.match(source, /function renderReceivableAging\(\)/, 'dashboard must render receivable aging buckets');
+assert.match(source, /function receivableOrdersForWindow\(window\)\{\s*return ordersForWindow\(window\)\.filter\(order=>customerReceivable\(order\)\);/, 'receivable aging must include future-dated outstanding orders');
+assert.match(source, /未到入住日/, 'receivable aging must label future-dated outstanding orders');
+assert.match(source, /当前筛选没有待收款订单/, 'receivable aging must explain an empty result instead of showing misleading zeros');
 assert.match(source, /function renderProfitWaterfall\(\)/, 'dashboard must render the profit waterfall');
 assert.match(source, /function openDashboardDrill\(drill\)/, 'dashboard KPI cards must support order drill-down');
 const roomNights = 2;

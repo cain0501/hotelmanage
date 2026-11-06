@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261107-72" />
+    <link rel="stylesheet" href="styles.css?v=20261107-73" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -400,7 +400,7 @@
               <div class="panel-head"><div><p class="eyebrow">ACTION QUEUE</p><h2>今日待办</h2></div><button class="text-button" data-go="quality">查看全部</button></div>
               <div id="actionQueue" class="action-queue"></div>
             </article>
-            <article class="panel rank-panel">
+            <article class="panel rank-panel" hidden>
               <div class="panel-head"><div><p class="eyebrow">HOTEL PERFORMANCE</p><h2>酒店贡献排行</h2></div><button class="text-button" data-go="orders">订单台账</button></div>
               <div id="hotelRanking" class="ranking"></div>
             </article>
@@ -740,8 +740,9 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
-    <script src="shared/domain.js?v=20261107-72"></script>
-    <script src="shared/calculator.js?v=20261107-72"></script>
-    <script src="app.js?v=20261107-72"></script>
+    <script src="shared/domain.js?v=20261107-73"></script>
+    <script src="shared/calculator.js?v=20261107-73"></script>
+    <script src="app.js?v=20261107-73"></script>
+    <script>document.querySelector('.app-version').textContent='\u7248\u672c 20261107-73';</script>
   </body>
 </html>
