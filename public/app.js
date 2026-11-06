@@ -719,29 +719,27 @@ function sums(list) { return list.reduce((acc, order) => ({ gmv:acc.gmv + Number
 // Keep the ledger on the same basis as the split payment fields. The legacy
 // renderer above is retained for compatibility, then replaced here so partial
 // supplier payments never appear as a full cost payment.
-function transactionRowsWithSplit() {
-  if (ledgerAvailable) {
-    const visibleIds=new Set(dashboardOrders().map(order=>order.id));
-    const kindLabels={customer_receipt:'收款',supplier_payment:'成本付款',commission_receipt:'平台返佣',refund:'退款',direct_cost:'直接费用'};
-    const orderRows=ledgerTransactions.filter(item=>item.orderId&&visibleIds.has(item.orderId)).map(item=>{const order=orders.find(record=>record.id===item.orderId)||{id:item.orderId};return {date:item.date,kind:kindLabels[item.kind]||item.kind,amount:item.amount,party:item.kind==='customer_receipt'?order.customer:order.supplier,note:item.note||kindLabels[item.kind]||'资金流水',order};});
-    const otherRows=otherIncomes.map(item=>{const linked=incomeOrderIds(item).map(id=>orders.find(order=>order.id===id)).filter(Boolean);return [{date:item.date,kind:'其它收入',amount:Number(item.amount||0),party:item.payer||item.name,note:linked.length?`关联 ${linked.map(order=>orderCode(order)).join('、')}`:'未关联订单',order:{id:item.id}},item.expense?{date:item.date,kind:'其它支出',amount:-Number(item.expense),party:item.payee||item.name,note:'其它收入支出',order:{id:item.id}}:null].filter(Boolean)}).flat();
-    return [...orderRows,...otherRows].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+const ledgerSnapshotKinds=new Set(['customer_receipt','supplier_payment','commission_receipt','direct_cost']);
+function orderLedgerSnapshot(order){
+  const rows=[];
+  if(isCommissionOrder(order)){
+    if(commissionReceived(order)>0)rows.push({date:order.commissionReceivedDate||order.orderDate||order.serviceDate,kind:'平台返佣',amount:commissionReceived(order),party:order.commissionPlatform||order.supplier,note:`当前已收返佣 · ${order.confirmation||orderCode(order)}`,order});
+    if(directCost(order)>0)rows.push({date:order.orderDate||order.serviceDate,kind:'直接费用',amount:-directCost(order),party:order.supplier,note:'已登记直接费用',order});
+  }else{
+    if(Number(order.received||0)>0)rows.push({date:order.orderDate||order.serviceDate,kind:'收款',amount:Number(order.received),party:order.customer,note:`当前客户实收 · ${order.confirmation||orderCode(order)}`,order});
+    if(supplierPaid(order)>0)rows.push({date:order.orderDate||order.serviceDate,kind:'成本付款',amount:-supplierPaid(order),party:order.supplier,note:`当前已付供应商 · ${order.confirmation||orderCode(order)}`,order});
   }
-  const orderRows = dashboardOrders().flatMap(order => {
-    const rows = [];
-    if (isCommissionOrder(order)) {
-      if (commissionReceived(order)) rows.push({ date: order.commissionReceivedDate || order.orderDate || order.serviceDate, kind:'\u5e73\u53f0\u8fd4\u4f63', amount:commissionReceived(order), party:order.commissionPlatform||order.supplier, note:`\u4f63\u91d1\u5230\u8d26 \u00b7 ${order.confirmation||orderCode(order)}`, order });
-      if (directCost(order)) rows.push({ date: order.orderDate || order.serviceDate, kind:'\u76f4\u63a5\u8d39\u7528', amount:-directCost(order), party:order.supplier, note:'\u8fd4\u4f63\u8ba2\u5355\u76f4\u63a5\u8d39\u7528', order });
-    } else {
-      if (order.received) rows.push({ date: order.orderDate || order.serviceDate, kind:'\u6536\u6b3e', amount:Number(order.received), party:order.customer, note:'\u8ba2\u5355\u6536\u6b3e', order });
-      if (supplierPaid(order)) rows.push({ date: order.orderDate || order.serviceDate, kind:'\u6210\u672c\u4ed8\u6b3e', amount:-supplierPaid(order), party:order.supplier, note:'\u4f9b\u5e94\u5546\u7ed3\u7b97', order });
-    }
-    return rows;
+  return rows;
+}
+function transactionRowsWithSplit(){
+  const kindLabels={customer_receipt:'收款',supplier_payment:'成本付款',commission_receipt:'平台返佣',refund:'退款',direct_cost:'直接费用'};
+  const orderRows=dashboardOrders().flatMap(order=>{
+    const snapshot=orderLedgerSnapshot(order);
+    if(!ledgerAvailable)return snapshot;
+    const extras=ledgerTransactions.filter(item=>item.orderId===order.id&&!ledgerSnapshotKinds.has(item.kind)).map(item=>({date:item.date,kind:kindLabels[item.kind]||item.kind,amount:item.amount,party:item.kind==='refund'?order.customer:order.supplier,note:item.note||kindLabels[item.kind]||'资金流水',order}));
+    return [...snapshot,...extras];
   });
-  const otherRows = otherIncomes.map(item => {
-    const linked = incomeOrderIds(item).map(id => orders.find(order => order.id===id)).filter(Boolean);
-    return [{ date:item.date, kind:'\u5176\u4ed6\u6536\u5165', amount:Number(item.amount||0), party:item.payer||item.name, note:linked.length?`\u5173\u8054 ${linked.map(order=>orderCode(order)).join('\u3001')}`:'\u672a\u5173\u8054\u8ba2\u5355', order:{id:item.id} }, item.expense?{ date:item.date, kind:'\u5176\u4ed6\u652f\u51fa', amount:-Number(item.expense), party:item.payee||item.name, note:'\u5176\u4ed6\u6536\u5165\u652f\u51fa', order:{id:item.id} }:null].filter(Boolean);
-  }).flat();
+  const otherRows=otherIncomes.map(item=>{const linked=incomeOrderIds(item).map(id=>orders.find(order=>order.id===id)).filter(Boolean);return [{date:item.date,kind:'其它收入',amount:Number(item.amount||0),party:item.payer||item.name,note:linked.length?`关联 ${linked.map(order=>orderCode(order)).join('、')}`:'未关联订单',order:{id:item.id}},item.expense?{date:item.date,kind:'其它支出',amount:-Number(item.expense),party:item.payee||item.name,note:'其它收入支出',order:{id:item.id}}:null].filter(Boolean)}).flat();
   return [...orderRows,...otherRows].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 }
 transactionRows = transactionRowsWithSplit;
@@ -908,7 +906,8 @@ function renderOrdersBase() {
 }
 function renderLedger() {
   const rows=transactionRows(); const received=rows.filter(r=>r.amount>0).reduce((n,r)=>n+r.amount,0); const paid=Math.abs(rows.filter(r=>r.amount<0).reduce((n,r)=>n+r.amount,0));
-  byId('ledgerSummary').innerHTML=`<article><p>已收款</p><strong class="profit-positive">${compactCurrency(received)}</strong></article><article><p>已付成本</p><strong class="profit-negative">${compactCurrency(paid)}</strong></article><article><p>现金净流入</p><strong>${compactCurrency(received-paid)}</strong></article>`;
+  const pendingSupplier=dashboardOrders().reduce((sum,order)=>sum+(supplierPayable(order)?Math.max(0,Number(order.cost||0)-supplierPaid(order)):0),0);
+  byId('ledgerSummary').innerHTML=`<article><p>已收款</p><strong class="profit-positive">${compactCurrency(received)}</strong></article><article><p>已付成本</p><strong class="profit-negative">${compactCurrency(paid)}</strong></article><article><p>待付供应商</p><strong class="pending-amount">${compactCurrency(pendingSupplier)}</strong></article><article><p>现金净流入</p><strong>${compactCurrency(received-paid)}</strong></article>`;
   byId('ledgerTable').innerHTML=rows.map(r=>`<tr><td>${dateFmt(r.date)}</td><td><span class="status ${r.amount>=0?'paid':'unpaid'}">${escapeHtml(r.kind)}</span></td><td>${escapeHtml(r.order.id)}</td><td>${escapeHtml(r.party||'')}</td><td>${escapeHtml(r.note||'')}</td><td class="money amount ${r.amount>=0?'income':'expense'}">${r.amount>=0?'+':'−'}${compactCurrency(Math.abs(r.amount))}</td></tr>`).join('') || '<tr><td colspan="6"><div class="empty-state">暂无资金流水</div></td></tr>';
 }
 function syncOtherIncomeMonthPicker(){const period=byId('otherIncomePeriodSelect'),month=byId('otherIncomePeriodMonth');if(!period||!month)return;if(!month.value)month.value=today.slice(0,7);if(period.value==='current')month.value=today.slice(0,7);month.disabled=period.value==='all';}

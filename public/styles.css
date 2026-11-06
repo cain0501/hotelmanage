@@ -53,6 +53,11 @@
   .detail-actions>div{display:flex;gap:6px;flex-wrap:wrap}
 }
 
+/* Ledger cards distinguish money already moved from supplier amounts still owed. */
+.ledger-summary{grid-template-columns:repeat(4,minmax(0,1fr))}
+.pending-amount{color:var(--gold)}
+@media(max-width:720px){.ledger-summary{grid-template-columns:1fr}}
+
 /* Desktop distribution panels: use the available width for the bars and keep
    both panels compact instead of letting the grid stretch their empty bottoms. */
 @media (min-width: 1101px) {
