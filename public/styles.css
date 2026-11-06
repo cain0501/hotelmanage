@@ -53,6 +53,22 @@
   .detail-actions>div{display:flex;gap:6px;flex-wrap:wrap}
 }
 
+/* Hotel portfolio ranking: readable operating facts instead of a compressed bubble plot. */
+.bubble-panel .dashboard-chart{height:auto;min-height:0;padding:8px 20px 22px}
+.hotel-portfolio-toolbar{display:flex;align-items:center;gap:7px;margin:0 0 12px;color:var(--muted);font-size:11px}
+.hotel-portfolio-toolbar small{margin-left:auto;color:#9b9388}
+.portfolio-sort{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:999px;padding:5px 10px;font:11px inherit;cursor:pointer}
+.portfolio-sort:hover,.portfolio-sort.selected{background:var(--ink);border-color:var(--ink);color:#fff}
+.hotel-portfolio-list{display:grid;gap:6px}
+.hotel-portfolio-row{display:grid;grid-template-columns:34px minmax(190px,1.35fr) minmax(190px,1fr) 100px 92px;align-items:center;gap:14px;width:100%;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--ink);padding:9px 10px;text-align:left;font:inherit;cursor:pointer;transition:background .18s ease,border-color .18s ease,transform .18s ease}
+.hotel-portfolio-row:hover{background:#f6efe2;border-color:#eadfcf;transform:translateX(2px)}
+.portfolio-rank{font:11px "DM Mono",monospace;color:var(--gold);text-align:center}
+.portfolio-hotel{min-width:0}.portfolio-hotel strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.portfolio-hotel small{display:block;margin-top:3px;color:var(--muted);font-size:10px}
+.portfolio-gmv{min-width:0}.portfolio-value{display:block;font:11px "DM Mono",monospace}.portfolio-track{display:block;height:6px;margin-top:5px;background:#eee8dd;border-radius:99px;overflow:hidden}.portfolio-track i{display:block;height:100%;background:var(--gold);border-radius:inherit;transition:width .45s ease}
+.portfolio-profit{font:12px "DM Mono",monospace;text-align:right;color:var(--green)}.portfolio-profit.is-negative{color:var(--red)}
+.portfolio-margin{text-align:right}.portfolio-margin b{display:block;font:12px "DM Mono",monospace;color:var(--ink-2)}.portfolio-margin small{display:block;margin-top:3px;color:var(--muted);font-size:10px}.hotel-portfolio-row.is-strong .portfolio-margin b{color:var(--green)}.hotel-portfolio-row.is-negative .portfolio-margin b,.hotel-portfolio-row.is-negative .portfolio-margin small{color:var(--red)}
+@media(max-width:720px){.hotel-portfolio-row{grid-template-columns:25px minmax(120px,1fr) 82px 62px;gap:8px;padding:8px 4px}.portfolio-gmv{grid-column:3}.portfolio-profit{grid-column:4}.portfolio-margin{grid-column:4;grid-row:2}.portfolio-hotel{grid-column:2;grid-row:1 / span 2}.hotel-portfolio-toolbar{flex-wrap:wrap}.hotel-portfolio-toolbar small{width:100%;margin-left:0}}
+
 /* Ledger cards distinguish money already moved from supplier amounts still owed. */
 .ledger-summary{grid-template-columns:repeat(4,minmax(0,1fr))}
 .pending-amount{color:var(--gold)}

@@ -26,6 +26,11 @@ assert.match(html, /echarts@5\.5\.1\/dist\/echarts\.min\.js/, 'dashboard must lo
 assert.match(html, /id="receivableAging"/, 'dashboard must expose the receivable aging panel');
 assert.match(html, /id="profitWaterfall"/, 'dashboard must expose the profit waterfall panel');
 assert.match(html, /id="hotelBubbleChart"/, 'dashboard must expose the hotel bubble chart panel');
+assert.match(html, /酒店经营排名/, 'dashboard must label the hotel portfolio as an operating ranking');
+assert.match(source, /function renderHotelPortfolio\(\)/, 'dashboard must render the readable hotel portfolio ranking');
+assert.match(source, /hotelPortfolioSort='gmv'/, 'hotel portfolio must support explicit sort state');
+assert.match(source, /\.slice\(0,10\)/, 'hotel portfolio must show the top ten hotels');
+assert.match(source, /data-hotel-sort/, 'hotel portfolio must expose GMV, profit, and margin sort controls');
 assert.match(source, /function periodWindow\(period,month\)/, 'dashboard month comparisons must use an explicit period window');
 assert.match(source, /function previousWindow\(window\)/, 'dashboard comparisons must use the previous natural month');
 assert.match(source, /function renderDashboardComparisons\(\)/, 'dashboard KPI deltas must be rendered from one snapshot');

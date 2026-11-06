@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261107-71" />
+    <link rel="stylesheet" href="styles.css?v=20261107-72" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -335,7 +335,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-          <small class="app-version">版本 20261107-71</small>
+          <small class="app-version">版本 20261107-72</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -389,8 +389,8 @@
               <div id="profitWaterfall" class="dashboard-chart" aria-label="利润构成瀑布图"></div>
             </article>
             <article class="panel dashboard-chart-panel bubble-panel" id="hotelBubblePanel">
-              <div class="panel-head"><div><p class="eyebrow">HOTEL PORTFOLIO</p><h2>酒店 GMV × 利润率</h2></div><span class="panel-caption">气泡大小 = 房晚数</span></div>
-              <div id="hotelBubbleChart" class="dashboard-chart" aria-label="酒店 GMV 与利润率气泡图"></div>
+              <div class="panel-head"><div><p class="eyebrow">HOTEL PORTFOLIO</p><h2>酒店经营排名</h2></div><span class="panel-caption">GMV · 利润 · 利润率</span></div>
+              <div id="hotelBubbleChart" class="dashboard-chart" aria-label="酒店 GMV、利润与利润率排名"></div>
             </article>
             <article class="panel trend-panel">
               <div class="panel-head"><div><p class="eyebrow">ORDER BUSINESS</p><h2>订单 GMV 与利润走势</h2></div><span class="legend"><i></i>GMV <i></i>利润</span></div>
@@ -740,8 +740,8 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
-    <script src="shared/domain.js?v=20261107-71"></script>
-    <script src="shared/calculator.js?v=20261107-71"></script>
-    <script src="app.js?v=20261107-71"></script>
+    <script src="shared/domain.js?v=20261107-72"></script>
+    <script src="shared/calculator.js?v=20261107-72"></script>
+    <script src="app.js?v=20261107-72"></script>
   </body>
 </html>
