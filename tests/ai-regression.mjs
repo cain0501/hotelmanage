@@ -23,6 +23,8 @@ assert.match(source, /commission_status: \{ type: 'string', enum: \['pending', '
 assert.match(source, /commission_platform,service_date/, 'business summaries must load commission platforms');
 assert.match(source, /function paymentPlatformRecord\(order: Record<string, unknown>\)/, 'AI summaries must resolve the platform by settlement mode');
 assert.match(source, /groupBy === 'payment_platform' \? paymentPlatformRecord\(order\)/, 'AI platform grouping must include commission platforms');
+assert.match(source, /received: 'number', customer_received: 'number'/, 'accounting drafts must expose customer receipt amounts');
+assert.match(source, /customer_payment_status 和 payment_status 设为 paid/, 'accounting prompt must keep customer and supplier payment facts separate');
 
 const dateInRange = (value, start, end) => {
   const date = String(value || '');

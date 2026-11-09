@@ -29,7 +29,7 @@ const accountingSchema = {
   order: {
     type: 'hotel | flight', customer: 'string', booker: 'string', order_date: 'YYYY-MM-DD', service_date: 'YYYY-MM-DD',
     location: 'string', supplier: 'string', product: 'string', confirmation: 'string', rooms: 'number', nights: 'number',
-    tickets: 'number', gmv: 'number', cost: 'number', payment_status: 'paid | partial | unpaid | refunded', customer_payment_status: 'paid | partial | unpaid | refunded | not_applicable', supplier_paid: 'number', supplier_payment_status: 'paid | partial | unpaid | unknown | not_required', payment_platform: 'string',
+    tickets: 'number', gmv: 'number', cost: 'number', received: 'number', customer_received: 'number', payment_status: 'paid | partial | unpaid | refunded', customer_payment_status: 'paid | partial | unpaid | refunded | not_applicable', supplier_paid: 'number', supplier_payment_status: 'paid | partial | unpaid | unknown | not_required', payment_platform: 'string',
     status: 'booked | confirming | confirmed | cancelled | pending | ticketed | refunded', settlement_mode: 'agency_pay | guest_pay_commission | no_funds',
     guest_payment_to: 'string', commission_platform: 'string', commission_status: 'pending | partial | received | none',
     commission_expected: 'number', commission_received: 'number', direct_cost: 'number',
@@ -38,7 +38,7 @@ const accountingSchema = {
 };
 
 const systemPrompt = (today: string) => `你是酒店和机票运营台账助手。今天是 ${today}。把用户的中文自然语言转换成可审核的结构化记账草稿。只输出一个 JSON 对象，不要 Markdown，不要解释文字。严格遵守以下结构：${JSON.stringify(accountingSchema)}。
-规则：不要臆造金额、日期、客户、供应商、房型或确认号；缺失且会影响入账的字段放入 missing_fields。“今天、明天、后天”按今天 ${today} 计算。酒店“住2晚”填 nights=2，房晚由系统按 rooms × nights 计算。客人在前台付款、平台之后返佣属于 commission，订单成本填 0；返佣平台、预计佣金、已收佣金、直接费用分别填入对应字段。收到、收款、返佣到账优先识别为 payment 或 commission，不要新建订单。付款状态不明确时不要默认已付款，放入 missing_fields。无法判断时 intent=unknown。所有数字必须是数字，无法确定时不要猜。`;
+  规则：不要臆造金额、日期、客户、供应商、房型或确认号；缺失且会影响入账的字段放入 missing_fields。“今天、明天、后天”按今天 ${today} 计算。酒店“住2晚”填 nights=2，房晚由系统按 rooms × nights 计算。客人在前台付款、平台之后返佣属于 commission，订单成本填 0；返佣平台、预计佣金、已收佣金、直接费用分别填入对应字段。收到、收款、返佣到账优先识别为 payment 或 commission，不要新建订单。客户已收款时将 customer_payment_status 和 payment_status 设为 paid；若未明确客户已收金额但已提供 gmv，将 received 设为 gmv。供应商或平台已付款时将 supplier_payment_status 设为 paid，并在未提供 supplier_paid 时用 cost；供应商或平台未付款时设为 unpaid。供应商或平台付款状态与客户收款状态必须分别填入各自字段，不要混用。付款状态不明确时不要默认已付款，放入 missing_fields。无法判断时 intent=unknown。所有数字必须是数字，无法确定时不要猜。`;
 
 const analysisPrompt = `你是酒店运营分析说明助手。前端已经用确定性规则完成统计，下面只提供统计结果和口径。只根据 context 中的事实组织简洁中文回答，不要重新计算、补造数据、生成 SQL 或修改订单。必须说明统计范围、日期口径和关键金额；数据不足时直接说明“当前数据不足以判断”。只输出 JSON：{"answer":"中文回答","key_points":["要点"],"limitations":["必要时说明限制"]}。`;
 
@@ -281,7 +281,7 @@ const chatTools = [
               type: { type: 'string' }, customer: { type: 'string' }, booker: { type: 'string' }, order_date: { type: 'string' },
               service_date: { type: 'string' }, location: { type: 'string' }, supplier: { type: 'string' }, product: { type: 'string' },
               confirmation: { type: 'string' }, rooms: { type: 'number' }, nights: { type: 'number' }, tickets: { type: 'number' },
-              gmv: { type: 'number' }, cost: { type: 'number' }, payment_status: { type: 'string' }, customer_payment_status: { type: 'string' }, supplier_paid: { type: 'number' }, supplier_payment_status: { type: 'string' }, payment_platform: { type: 'string' },
+              gmv: { type: 'number' }, cost: { type: 'number' }, received: { type: 'number' }, customer_received: { type: 'number' }, payment_status: { type: 'string' }, customer_payment_status: { type: 'string' }, supplier_paid: { type: 'number' }, supplier_payment_status: { type: 'string' }, payment_platform: { type: 'string' },
               status: { type: 'string' }, settlement_mode: { type: 'string', enum: ['agency_pay', 'guest_pay_commission', 'no_funds'] },
               guest_payment_to: { type: 'string' }, commission_platform: { type: 'string' }, commission_status: { type: 'string', enum: ['pending', 'partial', 'received', 'none'] },
               commission_expected: { type: 'number' }, commission_received: { type: 'number' }, direct_cost: { type: 'number' },
