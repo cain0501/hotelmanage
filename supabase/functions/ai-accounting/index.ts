@@ -60,6 +60,8 @@ const chatPrompt = (today: string) => `你是酒店运营与旅行知识工作�
 
 const chatToolRoutingRule = `补充规则：用户要求修改、统一、替换、批量修改已有订单字段时，必须调用 draft_data_change，先查询并返回待确认预览；如果提供了唯一订单编号、确认号或客户线索，可以省略 from_value，由工具自动读取当前值；禁止调用 draft_accounting，也禁止直接写入数据库。用户确认后才允许服务端执行修改。酒店/航司名称归入 supplier，房型/航班归入 product，城市/航线归入 location。`;
 
+const materialMatchRoutingRule = '\nWhen materials are present and the user asks to match, sync, or associate the material with an existing order, call draft_accounting first to extract the material fields, then call get_order_detail using the strongest identifier. Do not claim the order is fully matched when only a confirmation number matches and the platform order number is missing or different. The frontend will show a comparison draft and ask the user which fields to update.';
+
 const chatTools = [
   {
     type: 'function',
@@ -315,7 +317,7 @@ function dateInRange(value: unknown, start: string, end: string) {
   return Boolean(date) && (!start || date >= start) && (!end || date <= end);
 }
 
-const orderQueryFields = 'id,order_code,type,customer,booker,location,supplier,product,confirmation,order_date,service_date,rooms,nights,tickets,gmv,cost,received,payment_status,customer_payment_status,supplier_paid,supplier_payment_status,payment_platform,settlement_mode,guest_payment_to,commission_platform,commission_expected,commission_received,commission_status,direct_cost,commission_received_date,invoice_status,invoice_company,status,profit_override';
+const orderQueryFields = 'id,order_code,type,customer,booker,location,supplier,product,confirmation,platform_order_no,guest_names,order_date,service_date,rooms,nights,tickets,gmv,cost,received,payment_status,customer_payment_status,supplier_paid,supplier_payment_status,payment_platform,settlement_mode,guest_payment_to,commission_platform,commission_expected,commission_received,commission_status,direct_cost,commission_received_date,invoice_status,invoice_company,status,profit_override';
 const incomeQueryFields = 'id,income_date,name,payer,payee,order_id,amount,expense';
 const statusLabelMap: Record<string, string> = { booked: '预订中', confirming: '确认中', confirmed: '已确认', cancelled: '已取消', pending: '待出票', ticketed: '已出票', refunded: '已退票' };
 const paymentLabelMap: Record<string, string> = { paid: '已收款', partial: '部分付款', unpaid: '未付款', refunded: '已退款', unknown: '待核对' };
@@ -441,6 +443,8 @@ function formatOrderQueryRow(order: Record<string, unknown>) {
     supplier: order.supplier || '',
     product: order.product || '',
     confirmation: order.confirmation || '',
+    platform_order_no: order.platform_order_no || '',
+    guest_names: order.guest_names || '',
     order_date: order.order_date || '',
     service_date: order.service_date || '',
     rooms: numberValue(order.rooms),
@@ -608,7 +612,7 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
     if (!searchText) throw new Error('请提供订单编号、确认号、客户或酒店线索');
     const rows = await loadOrderQueryRows(client);
     const needle = normalizedText(searchText);
-    const matches = rows.filter((order) => `${order.id || ''} ${order.order_code || ''} ${order.confirmation || ''} ${order.customer || ''} ${order.booker || ''} ${order.location || ''} ${order.supplier || ''} ${order.product || ''}`.toLocaleLowerCase().includes(needle));
+    const matches = rows.filter((order) => `${order.id || ''} ${order.order_code || ''} ${order.confirmation || ''} ${order.platform_order_no || ''} ${order.customer || ''} ${order.booker || ''} ${order.location || ''} ${order.supplier || ''} ${order.product || ''}`.toLocaleLowerCase().includes(needle));
     let relatedIncome: Record<string, unknown>[] = [];
     if (args.include_related_income === true && matches.length) {
       const { data, error } = await client.from('other_income').select(incomeQueryFields).limit(10000);
@@ -948,7 +952,7 @@ Deno.serve(async (request) => {
     if (mode === 'chat') {
       const memories = await loadAssistantMemories(userClient);
       const chatMessages: any[] = [
-        { role: 'system', content: `${chatPrompt(today)}\n${chatToolRoutingRule}` },
+        { role: 'system', content: `${chatPrompt(today)}\n${chatToolRoutingRule}${materialMatchRoutingRule}` },
         { role: 'user', content: JSON.stringify({ question: text, context: body?.context_state || {}, conversation_summary: String(body?.conversation_summary || ''), confirmed_memories: memories, history: Array.isArray(body?.history) ? body.history.slice(-8) : [], materials }) },
       ];
       let analysis: Record<string, unknown> | null = null;

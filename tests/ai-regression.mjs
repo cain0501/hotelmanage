@@ -26,6 +26,9 @@ assert.match(source, /groupBy === 'payment_platform' \? paymentPlatformRecord\(o
 assert.match(source, /received: 'number', customer_received: 'number'/, 'accounting drafts must expose customer receipt amounts');
 assert.match(source, /customer_payment_status 和 payment_status 设为 paid/, 'accounting prompt must keep customer and supplier payment facts separate');
 assert.match(source, /platform_order_no/, 'accounting drafts must expose platform order number separately from hotel confirmation');
+assert.match(source, /platform_order_no,guest_names/, 'AI order detail rows must return platform order number and guest names');
+assert.match(source, /order\.platform_order_no \|\| ''/, 'order detail search must include platform order number');
+assert.match(source, /materials are present and the user asks to match/, 'material matching chat must extract a draft before claiming a match');
 assert.match(source, /check_out_date/, 'material drafts must expose checkout date');
 assert.match(source, /guest_count.*meal_plan/, 'material drafts must expose guest count and meal plan');
 assert.match(source, /order\.customer = ''/, 'material drafts must leave salesperson-owned customer blank');

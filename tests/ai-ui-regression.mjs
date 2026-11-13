@@ -34,6 +34,16 @@ const roomCardMatch = helpers.resolveMaterialOrderMatch({ type: 'hotel', supplie
 assert.equal(roomCardMatch.status, 'matched', 'room-card material should use the hotel, date, guest and upstream fingerprint');
 const newMatch = helpers.resolveMaterialOrderMatch({ type: 'hotel', platform_order_no: 'NEW-1', confirmation: 'NEW-C', service_date: '2026-12-01', supplier: '广州瑰丽' }, existingOrders);
 assert.equal(newMatch.status, 'new', 'unmatched material should remain a new order');
+const comparisonStart = source.indexOf('function normalizedOrderMatchValue');
+const comparisonEnd = source.indexOf('function renderAiDraftMatchTable', comparisonStart);
+assert.notEqual(comparisonStart, -1, 'material comparison helpers must exist');
+assert.notEqual(comparisonEnd, -1, 'material comparison helper boundary must remain discoverable');
+const comparisonHelpers = vm.runInNewContext(`${source.slice(comparisonStart, comparisonEnd)};({ materialComparison })`);
+const comparison = comparisonHelpers.materialComparison(existingOrders[0], { platform_order_no: 'S228007514940', supplier: '新酒店名', service_date: '2026-11-10' });
+assert.equal(comparison.find(item => item.key === 'supplier')?.changed, true, 'changed material fields must be marked for review');
+assert.equal(comparison.find(item => item.key === 'platform_order_no')?.changed, false, 'unchanged material fields must not be selected as changes');
+assert.match(source, /data-ai-material-field/, 'matched material must render field-level update checkboxes');
+assert.match(source, /填入选中字段/, 'matched material must use an explicit selected-fields action');
 assert.match(source, /byId\('settlementMode'\)\.value=mode/, 'AI fill must apply settlement mode');
 assert.match(source, /byId\('commissionExpected'\)\.value=mode==='guest_pay_commission'/, 'AI fill must apply expected commission');
 assert.match(source, /byId\('commissionStatus'\)\.value=mode==='guest_pay_commission'/, 'AI fill must apply commission status');

@@ -403,7 +403,7 @@ function renderAiDraftMatch(){
   if(aiDraftMatch.status==='ambiguous'){panel.className='ai-draft-match ambiguous';panel.innerHTML=`<strong>\u53d1\u73b0\u591a\u4e2a\u53ef\u80fd\u7684\u5df2\u6709\u8ba2\u5355</strong><span>\u8bf7\u5148\u9009\u62e9\u8981\u66f4\u65b0\u7684\u8ba2\u5355\uff0c\u7cfb\u7edf\u4e0d\u4f1a\u81ea\u52a8\u5408\u5e76\u3002</span><select id="aiDraftExistingOrder"><option value="">\u8bf7\u9009\u62e9\u5df2\u6709\u8ba2\u5355</option>${aiDraftMatch.candidates.map(order=>`<option value="${escapeHtml(order.id)}" ${order.id===aiDraftMatch.selectedId?'selected':''}>${escapeHtml(aiMatchOrderLabel(order))}</option>`).join('')}</select>`;return;}
   panel.className='ai-draft-match new';panel.innerHTML='<strong>\u672a\u5339\u914d\u5230\u5df2\u6709\u8ba2\u5355</strong><span>\u786e\u8ba4\u540e\u5c06\u6309\u65b0\u8ba2\u5355\u5904\u7406\u3002</span>';
 }
-function selectAiDraftExistingOrder(id){const order=aiDraftMatch.candidates.find(item=>String(item.id)===String(id));if(!order){aiDraftMatch.selectedId='';aiDraftMatch.order=null;return;}aiDraftMatch.selectedId=order.id;aiDraftMatch.order=order;aiDraftMatch.status='matched';renderAiDraftMatch();const button=byId('aiFillButton');if(button){button.disabled=false;button.textContent='\u66f4\u65b0\u5df2\u6709\u8ba2\u5355';}}
+function selectAiDraftExistingOrder(id){const order=aiDraftMatch.candidates.find(item=>String(item.id)===String(id));if(!order){aiDraftMatch.selectedId='';aiDraftMatch.order=null;return;}aiDraftMatch.selectedId=order.id;aiDraftMatch.order=order;aiDraftMatch.status='matched';aiDraftMatch.comparison=materialComparison(order,aiDraftMatch.source||{});aiDraftMatch.selectedFields=aiDraftMatch.comparison.filter(item=>item.changed).map(item=>item.key);renderAiDraftMatch();updateAiFillButton();}
 function renderAiDraft(){
   const panel=byId('aiDraftPanel');if(!panel||!aiDraft)return;const data=aiDraft.data||aiDraft;const order=data.order||{};const income=data.income||{};const items=[];if(data.intent==='order'){const mode=aiSettlementMode(order);items.push(['业务类型',order.type==='flight'?'机票订单':'酒店订单'],['客户',order.customer],['预订人',order.booker],['下单日期',order.order_date],['入住/出发',order.service_date],['供应商',order.supplier],['房型/航班',order.product],['GMV',order.gmv?compactCurrency(order.gmv):'未识别'],['结算模式',mode==='guest_pay_commission'?'客人前台支付 · 平台返佣':mode==='no_funds'?'无资金往来':'我方代付']);if(mode==='guest_pay_commission')items.push(['客人支付给',order.guest_payment_to||'酒店前台'],['返佣平台',order.commission_platform||order.payment_platform],['预计佣金',order.commission_expected??order.commission?compactCurrency(order.commission_expected??order.commission):'未识别'],['佣金状态',aiCommissionStatus(order)]);else items.push(['成本',order.cost?compactCurrency(order.cost):'未识别'],['付款状态',order.payment_status]);}else{items.push(['日期',income.date],['名称',income.name],['收款方',income.payer],['付款方',income.payee],['收入',income.amount?compactCurrency(income.amount):'¥0'],['支出',income.expense?compactCurrency(income.expense):'¥0'],['关联线索',income.search_text]);}byId('aiDraftIntent').textContent=aiIntentText(data.intent);byId('aiDraftSummary').innerHTML=items.map(([label,value])=>`<div><span>${label}</span><b>${value||'未识别'}</b></div>`).join('');byId('aiDraftJson').textContent=JSON.stringify(data,null,2);panel.hidden=false;}
 function renderAiDraftMatchSafe(){
@@ -412,13 +412,33 @@ function renderAiDraftMatchSafe(){
   if(aiDraftMatch.status==='ambiguous'){panel.className='ai-draft-match ambiguous';panel.innerHTML='<strong>\u53d1\u73b0\u591a\u4e2a\u53ef\u80fd\u7684\u5df2\u6709\u8ba2\u5355</strong><span>\u8bf7\u5148\u9009\u62e9\u8981\u66f4\u65b0\u7684\u8ba2\u5355\uff0c\u7cfb\u7edf\u4e0d\u4f1a\u81ea\u52a8\u5408\u5e76\u3002</span><select id="aiDraftExistingOrder"><option value="">\u8bf7\u9009\u62e9\u5df2\u6709\u8ba2\u5355</option>'+aiDraftMatch.candidates.map(order=>'<option value="'+escapeHtml(order.id)+'" '+(order.id===aiDraftMatch.selectedId?'selected':'')+'>'+escapeHtml(aiMatchOrderLabel(order))+'</option>').join('')+'</select>';return;}
   panel.className='ai-draft-match new';panel.innerHTML='<strong>\u672a\u5339\u914d\u5230\u5df2\u6709\u8ba2\u5355</strong><span>\u786e\u8ba4\u540e\u5c06\u6309\u65b0\u8ba2\u5355\u5904\u7406\u3002</span>';
 }
-renderAiDraftMatch=renderAiDraftMatchSafe;
+const materialComparisonFields=[
+  ['order_date','下单日期','orderDate'],['service_date','入住 / 出发日期','serviceDate'],['check_out_date','离店日期','checkOutDate'],['supplier','酒店 / 航司','supplier'],['location','城市 / 航线','location'],['product','房型 / 航班','product'],['confirmation','酒店确认号','confirmation'],['platform_order_no','平台订单号','platformOrderNo'],['guest_names','入住人 / 乘机人','guestNames'],['guest_count','入住人数','guestCount'],['meal_plan','餐型','mealPlan'],['rooms','房间数','rooms'],['nights','晚数','nights'],['tickets','票数','tickets'],['channel','订单渠道','channel'],['upstream_name','供应商 / 同行','upstreamName'],['payment_deadline','付款截止','paymentDeadline'],['cancel_policy','取消政策','cancelPolicy'],['free_cancel_until','免费取消截止','freeCancelUntil'],['status','订单状态','orderStatus'],
+];
+function materialSourceValue(source,key){return source?.[key]??'';}
+function existingMaterialValue(order,key){const values={order_date:order.orderDate,service_date:order.serviceDate,check_out_date:order.checkOutDate,supplier:order.supplier,location:order.location,product:order.product,confirmation:order.confirmation,platform_order_no:order.platformOrderNo,guest_names:order.guestNames,guest_count:order.guestCount,meal_plan:order.mealPlan,rooms:order.rooms,nights:order.nights,tickets:order.tickets,channel:order.channel,upstream_name:order.upstreamName,payment_deadline:order.paymentDeadline,cancel_policy:order.cancelPolicy,free_cancel_until:order.freeCancelUntil,status:order.status};return values[key]??'';}
+function materialComparison(order,source){return materialComparisonFields.map(([key,label,input])=>{const incoming=String(materialSourceValue(source,key)).trim();if(!incoming)return null;const current=String(existingMaterialValue(order,key)).trim();return {key,label,input,current,incoming,changed:normalizedOrderMatchValue(current)!==normalizedOrderMatchValue(incoming)};}).filter(Boolean);}
+function updateAiFillButton(){const button=byId('aiFillButton');if(!button)return;const matched=aiDraftMatch.status==='matched';const selected=aiDraftMatch.selectedFields?.length||0;button.disabled=aiDraftMatch.status==='ambiguous'||(matched&&!selected);button.textContent=matched?'填入选中字段':'填入对应表单';}
+function renderAiDraftMatchTable(){
+  const panel=byId('aiDraftMatch');if(!panel)return;panel.hidden=false;
+  if(aiDraftMatch.status==='matched'&&aiDraftMatch.order){
+    const comparison=aiDraftMatch.comparison||[];let html='<strong>已匹配台账订单</strong><span>通过'+escapeHtml(aiMatchReasonLabel(aiDraftMatch.reason))+'：'+escapeHtml(aiMatchOrderLabel(aiDraftMatch.order))+'</span><small>请勾选需要更新的字段。销售和付款字段不会被材料自动覆盖。</small>';
+    html+=comparison.length?'<div class="ai-match-table-wrap"><table class="ai-match-table"><thead><tr><th>更新</th><th>字段</th><th>原订单</th><th>材料识别</th></tr></thead><tbody>'+comparison.map(item=>'<tr class="'+(item.changed?'is-changed':'is-same')+'"><td><input type="checkbox" data-ai-material-field="'+item.key+'" '+(aiDraftMatch.selectedFields.includes(item.key)?'checked ':'')+(item.changed?'':'disabled')+'></td><td>'+escapeHtml(item.label)+'</td><td>'+escapeHtml(item.current||'未填写')+'</td><td>'+escapeHtml(item.incoming)+(item.changed?'':'（一致）')+'</td></tr>').join('')+'</tbody></table></div>':'<span>材料没有识别到可更新的业务字段。</span>';
+    panel.className='ai-draft-match matched';panel.innerHTML=html;updateAiFillButton();return;
+  }
+  if(aiDraftMatch.status==='ambiguous'){panel.className='ai-draft-match ambiguous';panel.innerHTML='<strong>发现多个可能的已有订单</strong><span>请先选择要更新的订单，系统不会自动合并。</span><select id="aiDraftExistingOrder"><option value="">请选择已有订单</option>'+aiDraftMatch.candidates.map(order=>'<option value="'+escapeHtml(order.id)+'" '+(order.id===aiDraftMatch.selectedId?'selected':'')+'>'+escapeHtml(aiMatchOrderLabel(order))+'</option>').join('')+'</select>';updateAiFillButton();return;}
+  panel.className='ai-draft-match new';panel.innerHTML='<strong>未匹配到已有订单</strong><span>确认后将按新订单处理。</span>';updateAiFillButton();
+}
+renderAiDraftMatch=renderAiDraftMatchTable;
 const renderAiDraftBase=renderAiDraft;
 renderAiDraft=function(){
   const data=aiDraft?.data||aiDraft||{},order=data.order||{},isMaterialOrder=data.intent==='order'&&assistantMaterialPayload().length>0;
-  aiDraftMatch=isMaterialOrder?resolveMaterialOrderMatch(order,orders):{status:'new',reason:'none',candidates:[],order:null,selectedId:''};
+  const resolvedMatch=isMaterialOrder?resolveMaterialOrderMatch(order,orders):{status:'new',reason:'none',candidates:[],order:null,selectedId:''};
+  const comparison=resolvedMatch.order?materialComparison(resolvedMatch.order,order):[];
+  aiDraftMatch={...resolvedMatch,source:order,comparison,selectedFields:comparison.filter(item=>item.changed).map(item=>item.key)};
   renderAiDraftBase();
   renderAiDraftMatch();
+  updateAiFillButton();
   const button=byId('aiFillButton');if(button){button.disabled=aiDraftMatch.status==='ambiguous';button.textContent=aiDraftMatch.status==='matched'?'更新已有订单':'\u586b\u5165\u5bf9\u5e94\u8868\u5355';}
 };
 const aiDraftIntents=new Set(['order','other_income','other_expense','payment','commission']);
@@ -502,6 +522,8 @@ function fillMatchedMaterialDraft(existing, source){
   if(Number(source.rooms)>0)byId('rooms').value=source.rooms;if(Number(source.nights)>0)byId('nights').value=source.nights;if(Number(source.tickets)>0)byId('tickets').value=source.tickets;
   setSelectIfProvided('channel',source.channel);setSelectIfProvided('cancelPolicy',source.cancel_policy);setSelectIfProvided('orderStatus',source.status);byId('guestNamesDifferent').checked=Boolean(source.guest_names||source.guestNames);syncGuestNameFields();syncNightsFromDates();refreshFormPreview();clearAiDraftPreview('\u5df2\u5339\u914d\u539f\u8ba2\u5355\uff0c\u8bf7\u6838\u5bf9\u6750\u6599\u5b57\u6bb5\u540e\u4fdd\u5b58\u3002');showView('orders');
 }
+const fillMatchedMaterialDraftBase=fillMatchedMaterialDraft;
+fillMatchedMaterialDraft=function(existing,source){const selected=new Set(aiDraftMatch.selectedFields||[]),filtered={...source};materialComparisonFields.forEach(([key])=>{if(!selected.has(key))delete filtered[key];});fillMatchedMaterialDraftBase(existing,filtered);};
 const fillFromAiDraftWithMatch=fillFromAiDraft;
 fillFromAiDraft=function(){
   const data=aiDraft?.data||aiDraft||{},isMaterialOrder=data.intent==='order'&&assistantMaterialPayload().length>0;
@@ -1538,7 +1560,7 @@ byId('memoryForm')?.addEventListener('submit',saveManualMemory);
  byId('aiProvider').addEventListener('change',event=>{if(event.target.value==='deepseek'){byId('aiBaseUrl').value='https://api.deepseek.com';if(!byId('aiModel').value||byId('aiModel').value==='gpt-4o-mini')byId('aiModel').value='deepseek-flash';}else if(event.target.value==='openai-compatible'){byId('aiBaseUrl').value='https://api.openai.com/v1';if(byId('aiModel').value==='deepseek-flash')byId('aiModel').value='gpt-4o-mini';}else{byId('aiBaseUrl').value='';}});
 byId('aiParseButton').addEventListener('click',runUnifiedAi);
 byId('aiFillButton').addEventListener('click',fillFromAiDraft);
-byId('aiDraftMatch')?.addEventListener('change',event=>{if(event.target.id==='aiDraftExistingOrder')selectAiDraftExistingOrder(event.target.value);});
+byId('aiDraftMatch')?.addEventListener('change',event=>{if(event.target.id==='aiDraftExistingOrder')selectAiDraftExistingOrder(event.target.value);else if(event.target.matches('[data-ai-material-field]')){const key=event.target.dataset.aiMaterialField;const selected=new Set(aiDraftMatch.selectedFields||[]);if(event.target.checked)selected.add(key);else selected.delete(key);aiDraftMatch.selectedFields=[...selected];updateAiFillButton();}});
 byId('assistantMaterialFiles')?.addEventListener('change',importAssistantMaterials);
 byId('clearAssistantMaterials')?.addEventListener('click',()=>{assistantMaterials=[];renderAssistantMaterials();byId('aiAccountingStatus').textContent='已清除材料';byId('aiAccountingStatus').className='ai-status';});
 byId('knowledgeForm').addEventListener('submit',saveKnowledgeDraft);
