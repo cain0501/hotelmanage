@@ -97,6 +97,12 @@
       .section-heading h2 { margin:0 0 5px; font:700 24px "Noto Serif SC",serif; }.section-heading p:not(.eyebrow) { margin:0; color:#8b857a; font-size:12px; }
       #ordersView th:nth-child(1), #ordersView td:nth-child(1) { width:116px; }.order-code { font:11px "DM Mono",monospace; color:#8b6738; }
       .order-status { display:block; margin-top:5px; color:#2b6f97; font-size:11px; }
+      .order-status.cancelled { display:inline-block; padding:3px 7px; border-radius:999px; background:#e6e6e6; color:#747474; }
+      .status.cancelled { background:#e0e0e0; color:#707070; }
+      #orderTable tr.cancelled-order td { color:#8a8a8a; background:#f3f3f3; }
+      #orderTable tr.cancelled-order td strong, #orderTable tr.cancelled-order td .money { color:#858585; }
+      #orderTable tr.cancelled-order:hover td { background:#ebebeb; }
+      #mobileOrderList .cancelled-order { background:#f3f3f3; border-left:4px solid #999; color:#858585; }
       .payment-platform { display:block; width:max-content; max-width:100%; margin-top:5px; padding:2px 6px; border-radius:999px; background:#f3eee5; color:#6d5b42; font-size:10px; line-height:1.4; white-space:normal; overflow-wrap:anywhere; }
       .order-pagination { display:inline-flex; align-items:center; gap:9px; margin-left:auto; margin-right:auto; }
       .page-button { border:1px solid #ded7c7; border-radius:4px; background:#fffdf8; color:#27594f; padding:5px 9px; font:500 11px inherit; cursor:pointer; }
@@ -335,7 +341,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-          <small class="app-version">版本 20261113-75</small>
+          <small class="app-version">版本 20261113-76</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -740,9 +746,9 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
-    <script src="shared/domain.js?v=20261113-75"></script>
-    <script src="shared/calculator.js?v=20261113-75"></script>
-    <script src="app.js?v=20261113-75"></script>
-    <script>document.querySelector('.app-version').textContent='\u7248\u672c 20261113-75';</script>
+    <script src="shared/domain.js?v=20261113-76"></script>
+    <script src="shared/calculator.js?v=20261113-76"></script>
+    <script src="app.js?v=20261113-76"></script>
+    <script>document.querySelector('.app-version').textContent='\u7248\u672c 20261113-76';</script>
   </body>
 </html>

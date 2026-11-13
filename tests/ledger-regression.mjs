@@ -20,6 +20,11 @@ assert.match(source, /else mergeLedgerTransaction\(row\)/, 'Realtime ledger inse
 assert.match(source, /function orderLedgerSnapshot\(order\)/, 'ledger display must derive current cash facts from order state');
 assert.match(source, /const pendingSupplier=dashboardOrders\(\)\.reduce/, 'unpaid supplier cost must be shown separately from cash outflow');
 assert.match(source, /!ledgerSnapshotKinds\.has\(item\.kind\)/, 'historical aggregate receipt and payment rows must not be double-counted');
+assert.match(source, /const removeLedgerTransactionsForOrder = async orderId/, 'cancelled orders must remove their cloud ledger rows');
+assert.match(source, /const purgeFailedOrderLedgers = async orderIds/, 'existing cancelled orders must be cleaned on cloud load');
+assert.match(source, /await purgeFailedOrderLedgers\(orders\.filter\(isFailedOrder\)\.map\(order => order\.id\)\)/, 'cloud load must purge legacy failed-order ledger rows');
+assert.match(source, /if\(isFailedOrder\(order\)\)await removeLedgerTransactionsForOrder\(order\.id\)/, 'saving a cancelled order must clear its ledger rows');
+assert.match(source, /const oldLedgerState=isFailedOrder\(old\)/, 'reactivating an order must rebuild ledger deltas from zero');
 assert.match(migration, /add column if not exists transaction_key/, 'database must persist order-save mutation keys');
 assert.match(migration, /ledger_transactions_transaction_key_unique_idx/, 'database must enforce mutation-key uniqueness per user');
 

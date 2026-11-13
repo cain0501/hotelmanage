@@ -144,6 +144,24 @@ const saveLedgerTransaction = async ({ orderId, kind, amount, date, note, source
   }
   mergeLedgerTransaction(data);
 };
+const removeLedgerTransactionsForOrder = async orderId => {
+  if (!orderId) return;
+  if (cloudReady && currentUser && ledgerAvailable) {
+    const { error } = await supabaseClient.from('ledger_transactions').delete().eq('order_id', orderId);
+    if (error) throw error;
+  }
+  ledgerTransactions = ledgerTransactions.filter(item => item.orderId !== orderId);
+};
+const purgeFailedOrderLedgers = async orderIds => {
+  const ids = [...new Set(orderIds.filter(Boolean).map(String))];
+  if (!ids.length) return;
+  if (cloudReady && currentUser && ledgerAvailable) {
+    const { error } = await supabaseClient.from('ledger_transactions').delete().in('order_id', ids);
+    if (error) throw error;
+  }
+  const failedIds = new Set(ids);
+  ledgerTransactions = ledgerTransactions.filter(item => !failedIds.has(String(item.orderId || '')));
+};
 const importFingerprint = async file => {
   const digest=await crypto.subtle.digest('SHA-256',await file.arrayBuffer());
   const hash=[...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -222,7 +240,7 @@ const settlementText = order => {
 };
 const customerReceivable = hotelDomain.isReceivable;
 const supplierPayable = hotelDomain.isPayable;
-const paymentIssue = order => isCommissionOrder(order) ? commissionOutstanding(order)>0 : customerReceivable(order)||supplierPayable(order);
+const paymentIssue = order => isFailedOrder(order) ? false : isCommissionOrder(order) ? commissionOutstanding(order)>0 : customerReceivable(order)||supplierPayable(order);
 const invoiceStatus = order => order.invoiceStatus === 'issued' && /无发票/.test(order.invoiceCompany || '') ? 'no_invoice' : order.invoiceStatus || (order.invoiceCompany ? 'issued' : 'unissued');
 const invoiceText = order => ({ issued:'已开票', unissued:'未开票', no_invoice:'无发票' })[invoiceStatus(order)] || '未开票';
 const statusText = order => ({ booked:'预订中', confirming:'确认中', confirmed:'已确认', cancelled:'已取消', pending:'待出票', ticketed:'已出票', refunded:'已退票' })[order.status] || '待确认';
@@ -483,6 +501,7 @@ async function loadCloudData({ allowMigration=true, silent=false }={}) {
   if (!ledgerResult.error) { ledgerAvailable = true; ledgerTransactions = (ledgerResult.data || []).map(rowToLedgerTransaction); }
   else if (!['42P01', 'PGRST205'].includes(ledgerResult.error.code) && ledgerResult.error.status !== 404) console.warn('资金流水表暂不可用', ledgerResult.error.message);
   cloudReady = true;
+  if (ledgerAvailable) { try { await purgeFailedOrderLedgers(orders.filter(isFailedOrder).map(order => order.id)); } catch (error) { console.warn('已取消订单流水清理失败', error.message); } }
   saveLocalOrders(); saveLocalOtherIncomes();
   setSyncStatus(`云端数据 · ${orders.length} 笔订单`, 'synced');
   renderAll();
@@ -917,6 +936,13 @@ function wrapPaymentStacks() {
     cell.append(stack);
   });
 }
+function decorateCancelledOrderRows(pageList){
+  const failedIds=new Set(pageList.filter(isFailedOrder).map(order=>String(order.id)));
+  document.querySelectorAll('#orderTable tr[data-detail]').forEach(row=>{
+    if(failedIds.has(row.dataset.detail)){row.classList.add('cancelled-order');row.querySelector('.order-status')?.classList.add('cancelled');}
+  });
+  document.querySelectorAll('#mobileOrderList [data-detail]').forEach(card=>{if(failedIds.has(card.dataset.detail)){card.classList.add('cancelled-order');if(!card.querySelector('.mobile-order-head .status.cancelled'))card.querySelector('.mobile-order-head')?.insertAdjacentHTML('beforeend','<span class="status cancelled">已取消</span>');}});
+}
 function renderOrdersBase() {
   const list=filteredOrders().sort((a,b)=>((b[dateField] || b.orderDate || b.serviceDate || '')).localeCompare(a[dateField] || a.orderDate || a.serviceDate || ''));
   const pageCount=Math.ceil(list.length/ORDER_PAGE_SIZE); orderPage=Math.min(orderPage,pageCount||1);
@@ -927,6 +953,7 @@ function renderOrdersBase() {
   decorateGmvCostLabels(pageList);
   wrapPaymentStacks();
   moveSupplierPaymentLabels(pageList);
+  decorateCancelledOrderRows(pageList);
   const first= list.length ? (orderPage-1)*ORDER_PAGE_SIZE+1 : 0; const last=Math.min(orderPage*ORDER_PAGE_SIZE,list.length);
   byId('orderCountLabel').textContent=list.length?`共 ${list.length} 笔订单 · 显示 ${first}-${last}`:'共 0 笔订单';
   byId('orderPagination').innerHTML=pageCount>1?`<button class="page-button" data-order-page="${orderPage-1}" ${orderPage===1?'disabled':''}>上一页</button><span>第 ${orderPage} / ${pageCount} 页</span><button class="page-button" data-order-page="${orderPage+1}" ${orderPage===pageCount?'disabled':''}>下一页</button>`:'';
@@ -1163,6 +1190,7 @@ openDetails = function renderOrderDetails(id){
     openDetailsBase(id);
     const order=orders.find(item=>item.id===id);const content=byId('detailContent');
     if(!order||!content)return;
+    if(isFailedOrder(raw))content.querySelector('.detail-status')?.classList.add('cancelled');
     const paymentSection=document.createElement('section');
     paymentSection.className='detail-section detail-payment-split';
     paymentSection.innerHTML=isCommissionOrder(order)
@@ -1249,13 +1277,15 @@ byId('orderForm').addEventListener('submit',async event=>{
   if(requestedSupplierStatus==='unpaid')savedSupplierPaid=0;
   savedSupplierPaid=Math.max(0,Math.min(savedCost,savedSupplierPaid));
   Object.assign(order,{cost:savedCost,received:savedCommission||savedNoFunds?0:received,paymentStatus:savedCommission||savedNoFunds?'not_applicable':paymentStatus,customerPaymentStatus:savedCommission||savedNoFunds?'not_applicable':paymentStatus,supplierPaid:savedSupplierPaid,supplierPaymentStatus:savedCommission||savedNoFunds?'not_required':requestedSupplierStatus});
-  const ledgerChanges=[];const old=previous||{};const addLedgerDelta=(kind,delta,note)=>{if(Math.abs(Number(delta||0))>0.001)ledgerChanges.push({orderId:order.id,kind,amount:Number(delta),date:order.orderDate||order.serviceDate||today,note,mutationKey:`${mutationKey}:${kind}`});};
-  addLedgerDelta('customer_receipt',Number(order.received||0)-Number(old.received||0),`订单收款 · ${order.confirmation||orderCode(order)}`);
-  addLedgerDelta('supplier_payment',-(Number(order.supplierPaid||0)-Number(old.supplierPaid||0)),`供应商结算 · ${order.confirmation||orderCode(order)}`);
-  addLedgerDelta('commission_receipt',Number(order.commissionReceived||0)-Number(old.commissionReceived||0),`佣金到账 · ${order.confirmation||orderCode(order)}`);
-  addLedgerDelta('direct_cost',-(Number(order.directCost||0)-Number(old.directCost||0)),`返佣订单直接费用 · ${order.confirmation||orderCode(order)}`);
+  const ledgerChanges=[];const old=previous||{};const oldLedgerState=isFailedOrder(old)?{...old,received:0,supplierPaid:0,commissionReceived:0,directCost:0}:old;const addLedgerDelta=(kind,delta,note)=>{if(Math.abs(Number(delta||0))>0.001)ledgerChanges.push({orderId:order.id,kind,amount:Number(delta),date:order.orderDate||order.serviceDate||today,note,mutationKey:`${mutationKey}:${kind}`});};
+  if(!isFailedOrder(order)){
+    addLedgerDelta('customer_receipt',Number(order.received||0)-Number(oldLedgerState.received||0),`订单收款 · ${order.confirmation||orderCode(order)}`);
+    addLedgerDelta('supplier_payment',-(Number(order.supplierPaid||0)-Number(oldLedgerState.supplierPaid||0)),`供应商结算 · ${order.confirmation||orderCode(order)}`);
+    addLedgerDelta('commission_receipt',Number(order.commissionReceived||0)-Number(oldLedgerState.commissionReceived||0),`佣金到账 · ${order.confirmation||orderCode(order)}`);
+    addLedgerDelta('direct_cost',-(Number(order.directCost||0)-Number(oldLedgerState.directCost||0)),`返佣订单直接费用 · ${order.confirmation||orderCode(order)}`);
+  }
   if(existing)Object.assign(existing,order);else orders.unshift(order);
-  try { await saveOrder(order); for(const change of ledgerChanges)await saveLedgerTransaction(change); if(cloudReady&&currentUser)await loadCloudData({allowMigration:false,silent:true}); saveLocalOrders(); delete form.dataset.editId; delete form.dataset.draftId; delete form.dataset.saveMutationId; byId('orderDialog').close(); renderAll(); showView('orders'); openDetails(order.id); }
+  try { await saveOrder(order); if(isFailedOrder(order))await removeLedgerTransactionsForOrder(order.id); else for(const change of ledgerChanges)await saveLedgerTransaction(change); if(cloudReady&&currentUser)await loadCloudData({allowMigration:false,silent:true}); saveLocalOrders(); delete form.dataset.editId; delete form.dataset.draftId; delete form.dataset.saveMutationId; byId('orderDialog').close(); renderAll(); showView('orders'); openDetails(order.id); }
   catch(error) { if(existing && previous) Object.assign(existing, previous); else orders=orders.filter(item=>item.id!==order.id); saveLocalOrders(); submitButton.disabled=false; submitButton.textContent=originalSubmitText; window.alert(`保存订单失败：${error.message}`); }
 });
 byId('openOtherIncomeDialog').addEventListener('click',()=>openOtherIncomeForm());

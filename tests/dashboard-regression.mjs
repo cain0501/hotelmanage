@@ -40,6 +40,8 @@ assert.match(source, /setTimeout\(resizeDashboardCharts,150\)/, 'dashboard chart
 assert.match(source, /function renderReceivableAging\(\)/, 'dashboard must render receivable aging buckets');
 assert.match(source, /const orderStatusOptions=type=>type==='flight'.*\['cancelled','已取消'\]/, 'flight orders must support cancelled status');
 assert.match(source, /const statuses=orderStatusOptions\(type\)/, 'order editor must use the shared status options');
+assert.match(source, /function decorateCancelledOrderRows\(pageList\)/, 'cancelled orders must have a dedicated visual state');
+assert.match(source, /row\.classList\.add\('cancelled-order'\)/, 'cancelled order rows must be styled separately');
 assert.match(source, /function receivableOrdersForWindow\(window\)\{\s*return ordersForWindow\(window\)\.filter\(order=>customerReceivable\(order\)\);/, 'receivable aging must include future-dated outstanding orders');
 assert.match(source, /未到入住日/, 'receivable aging must label future-dated outstanding orders');
 assert.match(source, /当前筛选没有待收款订单/, 'receivable aging must explain an empty result instead of showing misleading zeros');
