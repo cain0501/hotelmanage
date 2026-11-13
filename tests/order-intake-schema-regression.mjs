@@ -20,6 +20,7 @@ assert.match(html, /id="nights"[^>]*placeholder="按入住 \/ 离店日期自动
 assert.match(source, /function syncNightsFromDates\(\)/, 'hotel nights should be derived from stay dates when not manually entered');
 assert.match(source, /checkOutDate.*syncNightsFromDates/, 'changing the checkout date should recalculate automatic nights');
 assert.match(source, /order\.platformOrderNo/, 'keyword search must include platform order number');
+assert.match(source, /function filteredOrders\(\)\{[\s\S]*?order\.platformOrderNo[\s\S]*?\}\nfunction dashboardOrders/, 'order ledger filtering must include platform order number');
 for (const field of ['channel', 'platform_order_no', 'guest_names', 'guest_count', 'meal_plan', 'check_out_date', 'upstream_name', 'payment_deadline', 'cancel_policy', 'free_cancel_until']) {
   assert.match(source, new RegExp(field), `browser mapping must include ${field}`);
   assert.match(migration, new RegExp(`add column if not exists ${field}`), `migration must add ${field}`);
