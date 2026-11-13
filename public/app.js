@@ -59,6 +59,7 @@ let otherIncomeSearch = '';
 let AI_SETTINGS_STORAGE_KEY='qizhang-ai-settings-draft-guest';
 let aiSettings = { provider:'openai-compatible', baseUrl:'https://api.openai.com/v1', model:'gpt-4o-mini', temperature:0.1, enabled:false };
 let aiDraft = null;
+let aiDraftMatch = { status: 'new', candidates: [], order: null, selectedId: '' };
 let assistantPendingAction = null;
 let analysisResult = null;
 let assistantConversationId = null;
@@ -377,8 +378,49 @@ function aiCommissionStatus(order){
   const expected=Number(order?.commission_expected||order?.commission||0),received=Number(order?.commission_received||0);
   return expected>0&&received>=expected?'received':received>0?'partial':expected>0?'pending':'none';
 }
+function normalizedOrderMatchValue(value){return String(value||'').trim().toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu,'');}
+function resolveMaterialOrderMatch(draftOrder, existingOrders=orders){
+  const draft=draftOrder||{};
+  const platform=normalizedOrderMatchValue(draft.platform_order_no),confirmation=normalizedOrderMatchValue(draft.confirmation),supplier=normalizedOrderMatchValue(draft.supplier),location=normalizedOrderMatchValue(draft.location),guest=normalizedOrderMatchValue(draft.guest_names||draft.guestNames),upstream=normalizedOrderMatchValue(draft.upstream_name||draft.upstreamName),serviceDate=String(draft.service_date||'').slice(0,10);
+  const sameType=order=>!draft.type||draft.type===order.type;
+  const platformMatches=platform?existingOrders.filter(order=>sameType(order)&&normalizedOrderMatchValue(order.platformOrderNo)===platform):[];
+  if(platformMatches.length===1)return {status:'matched',reason:'platform_order_no',candidates:platformMatches,order:platformMatches[0],selectedId:platformMatches[0].id};
+  if(platformMatches.length>1)return {status:'ambiguous',reason:'platform_order_no',candidates:platformMatches,order:null,selectedId:''};
+  const confirmationMatches=confirmation?existingOrders.filter(order=>sameType(order)&&normalizedOrderMatchValue(order.confirmation)===confirmation):[];
+  const confirmationStrong=confirmationMatches.filter(order=>(!supplier||normalizedOrderMatchValue(order.supplier)===supplier)&&(!serviceDate||String(order.serviceDate||'').slice(0,10)===serviceDate));
+  if(confirmationStrong.length===1)return {status:'matched',reason:'confirmation',candidates:confirmationStrong,order:confirmationStrong[0],selectedId:confirmationStrong[0].id};
+  if(confirmationMatches.length)return {status:'ambiguous',reason:'confirmation',candidates:confirmationMatches,order:null,selectedId:''};
+  const fingerprintMatches=existingOrders.filter(order=>sameType(order)&&supplier&&serviceDate&&guest&&normalizedOrderMatchValue(order.supplier)===supplier&&String(order.serviceDate||'').slice(0,10)===serviceDate&&normalizedOrderMatchValue(order.guestNames||order.guest_names)===guest&&(!location||normalizedOrderMatchValue(order.location)===location)&&(!upstream||normalizedOrderMatchValue(order.upstreamName||order.upstream_name)===upstream));
+  if(fingerprintMatches.length===1)return {status:'matched',reason:'fingerprint',candidates:fingerprintMatches,order:fingerprintMatches[0],selectedId:fingerprintMatches[0].id};
+  if(fingerprintMatches.length>1)return {status:'ambiguous',reason:'fingerprint',candidates:fingerprintMatches,order:null,selectedId:''};
+  return {status:'new',reason:'none',candidates:[],order:null,selectedId:''};
+}
+function aiMatchReasonLabel(reason){return ({platform_order_no:'\u5e73\u53f0\u8ba2\u5355\u53f7',confirmation:'\u786e\u8ba4\u53f7',fingerprint:'\u9152\u5e97 + \u5165\u4f4f\u65e5\u671f + \u5165\u4f4f\u4eba'})[reason]||'\u5339\u914d\u4fe1\u606f';}
+function aiMatchOrderLabel(order){return `${orderCode(order)} · ${order.supplier||'\u672a\u586b\u5199\u9152\u5e97/\u822a\u53f8'} · ${order.serviceDate||'\u672a\u586b\u5199\u65e5\u671f'}`;}
+function renderAiDraftMatch(){
+  const panel=byId('aiDraftMatch');if(!panel)return;panel.hidden=false;
+  if(aiDraftMatch.status==='matched'&&aiDraftMatch.order){panel.className='ai-draft-match matched';panel.innerHTML=`<strong>\u5df2\u5339\u914d\u53f0\u8d26\u8ba2\u5355</strong><span>\u901a\u8fc7${escapeHtml(aiMatchReasonLabel(aiDraftMatch.reason))}：${escapeHtml(aiMatchOrderLabel(aiDraftMatch.order))}</span><small>\u70b9\u51fb\u4e0b\u65b9\u6309\u94ae\u540e\u6253\u5f00\u539f\u8ba2\u5355\u7f16\u8f91\u9875\uff0c\u6750\u6599\u6ca1\u6709\u63d0\u4f9b\u7684\u9500\u552e\u548c\u4ed8\u6b3e\u5b57\u6bb5\u4f1a\u4fdd\u7559\u539f\u503c\u3002</small>`;return;}
+  if(aiDraftMatch.status==='ambiguous'){panel.className='ai-draft-match ambiguous';panel.innerHTML=`<strong>\u53d1\u73b0\u591a\u4e2a\u53ef\u80fd\u7684\u5df2\u6709\u8ba2\u5355</strong><span>\u8bf7\u5148\u9009\u62e9\u8981\u66f4\u65b0\u7684\u8ba2\u5355\uff0c\u7cfb\u7edf\u4e0d\u4f1a\u81ea\u52a8\u5408\u5e76\u3002</span><select id="aiDraftExistingOrder"><option value="">\u8bf7\u9009\u62e9\u5df2\u6709\u8ba2\u5355</option>${aiDraftMatch.candidates.map(order=>`<option value="${escapeHtml(order.id)}" ${order.id===aiDraftMatch.selectedId?'selected':''}>${escapeHtml(aiMatchOrderLabel(order))}</option>`).join('')}</select>`;return;}
+  panel.className='ai-draft-match new';panel.innerHTML='<strong>\u672a\u5339\u914d\u5230\u5df2\u6709\u8ba2\u5355</strong><span>\u786e\u8ba4\u540e\u5c06\u6309\u65b0\u8ba2\u5355\u5904\u7406\u3002</span>';
+}
+function selectAiDraftExistingOrder(id){const order=aiDraftMatch.candidates.find(item=>String(item.id)===String(id));if(!order){aiDraftMatch.selectedId='';aiDraftMatch.order=null;return;}aiDraftMatch.selectedId=order.id;aiDraftMatch.order=order;aiDraftMatch.status='matched';renderAiDraftMatch();const button=byId('aiFillButton');if(button){button.disabled=false;button.textContent='\u66f4\u65b0\u5df2\u6709\u8ba2\u5355';}}
 function renderAiDraft(){
   const panel=byId('aiDraftPanel');if(!panel||!aiDraft)return;const data=aiDraft.data||aiDraft;const order=data.order||{};const income=data.income||{};const items=[];if(data.intent==='order'){const mode=aiSettlementMode(order);items.push(['业务类型',order.type==='flight'?'机票订单':'酒店订单'],['客户',order.customer],['预订人',order.booker],['下单日期',order.order_date],['入住/出发',order.service_date],['供应商',order.supplier],['房型/航班',order.product],['GMV',order.gmv?compactCurrency(order.gmv):'未识别'],['结算模式',mode==='guest_pay_commission'?'客人前台支付 · 平台返佣':mode==='no_funds'?'无资金往来':'我方代付']);if(mode==='guest_pay_commission')items.push(['客人支付给',order.guest_payment_to||'酒店前台'],['返佣平台',order.commission_platform||order.payment_platform],['预计佣金',order.commission_expected??order.commission?compactCurrency(order.commission_expected??order.commission):'未识别'],['佣金状态',aiCommissionStatus(order)]);else items.push(['成本',order.cost?compactCurrency(order.cost):'未识别'],['付款状态',order.payment_status]);}else{items.push(['日期',income.date],['名称',income.name],['收款方',income.payer],['付款方',income.payee],['收入',income.amount?compactCurrency(income.amount):'¥0'],['支出',income.expense?compactCurrency(income.expense):'¥0'],['关联线索',income.search_text]);}byId('aiDraftIntent').textContent=aiIntentText(data.intent);byId('aiDraftSummary').innerHTML=items.map(([label,value])=>`<div><span>${label}</span><b>${value||'未识别'}</b></div>`).join('');byId('aiDraftJson').textContent=JSON.stringify(data,null,2);panel.hidden=false;}
+function renderAiDraftMatchSafe(){
+  const panel=byId('aiDraftMatch');if(!panel)return;panel.hidden=false;
+  if(aiDraftMatch.status==='matched'&&aiDraftMatch.order){panel.className='ai-draft-match matched';panel.innerHTML='<strong>\u5df2\u5339\u914d\u53f0\u8d26\u8ba2\u5355</strong><span>\u901a\u8fc7'+escapeHtml(aiMatchReasonLabel(aiDraftMatch.reason))+'：'+escapeHtml(aiMatchOrderLabel(aiDraftMatch.order))+'</span><small>\u70b9\u51fb\u4e0b\u65b9\u6309\u94ae\u540e\u6253\u5f00\u539f\u8ba2\u5355\u7f16\u8f91\u9875\uff0c\u6750\u6599\u6ca1\u6709\u63d0\u4f9b\u7684\u9500\u552e\u548c\u4ed8\u6b3e\u5b57\u6bb5\u4f1a\u4fdd\u7559\u539f\u503c\u3002</small>';return;}
+  if(aiDraftMatch.status==='ambiguous'){panel.className='ai-draft-match ambiguous';panel.innerHTML='<strong>\u53d1\u73b0\u591a\u4e2a\u53ef\u80fd\u7684\u5df2\u6709\u8ba2\u5355</strong><span>\u8bf7\u5148\u9009\u62e9\u8981\u66f4\u65b0\u7684\u8ba2\u5355\uff0c\u7cfb\u7edf\u4e0d\u4f1a\u81ea\u52a8\u5408\u5e76\u3002</span><select id="aiDraftExistingOrder"><option value="">\u8bf7\u9009\u62e9\u5df2\u6709\u8ba2\u5355</option>'+aiDraftMatch.candidates.map(order=>'<option value="'+escapeHtml(order.id)+'" '+(order.id===aiDraftMatch.selectedId?'selected':'')+'>'+escapeHtml(aiMatchOrderLabel(order))+'</option>').join('')+'</select>';return;}
+  panel.className='ai-draft-match new';panel.innerHTML='<strong>\u672a\u5339\u914d\u5230\u5df2\u6709\u8ba2\u5355</strong><span>\u786e\u8ba4\u540e\u5c06\u6309\u65b0\u8ba2\u5355\u5904\u7406\u3002</span>';
+}
+renderAiDraftMatch=renderAiDraftMatchSafe;
+const renderAiDraftBase=renderAiDraft;
+renderAiDraft=function(){
+  const data=aiDraft?.data||aiDraft||{},order=data.order||{},isMaterialOrder=data.intent==='order'&&assistantMaterialPayload().length>0;
+  aiDraftMatch=isMaterialOrder?resolveMaterialOrderMatch(order,orders):{status:'new',reason:'none',candidates:[],order:null,selectedId:''};
+  renderAiDraftBase();
+  renderAiDraftMatch();
+  const button=byId('aiFillButton');if(button){button.disabled=aiDraftMatch.status==='ambiguous';button.textContent=aiDraftMatch.status==='matched'?'更新已有订单':'\u586b\u5165\u5bf9\u5e94\u8868\u5355';}
+};
 const aiDraftIntents=new Set(['order','other_income','other_expense','payment','commission']);
 const aiChangeTargetFields={supplier:'supplier',product:'product',location:'location',booker:'booker',customer:'customer',payment_platform:'paymentPlatform',confirmation:'confirmation',status:'status'};
 const aiChangeTargetLabels={supplier:'酒店 / 航司',product:'房型 / 航班',location:'城市 / 航线',booker:'预订人',customer:'客户',payment_platform:'付款平台',confirmation:'确认号 / 票号',status:'订单状态'};
@@ -451,6 +493,20 @@ fillFromAiDraft=function(){
   byId('freeCancelUntil').value=localDateTimeValue(order.free_cancel_until);
   if(looksLikeMaterial){byId('customer').value='';byId('booker').value='';byId('guestNames').value=guestNames;byId('guestNamesDifferent').checked=Boolean(guestNames);syncGuestNameFields();}
   syncNightsFromDates();refreshFormPreview();
+};
+function fillMatchedMaterialDraft(existing, source){
+  openEditOrder(existing.id);
+  const setIfProvided=(id,value)=>{if(value!==undefined&&value!==null&&String(value).trim()!=='')byId(id).value=String(value);};
+  const setSelectIfProvided=(id,value)=>{if(value!==undefined&&value!==null&&String(value).trim()!==''&&[...byId(id).options].some(option=>option.value===String(value)))byId(id).value=String(value);};
+  setIfProvided('orderDate',source.order_date);setIfProvided('serviceDate',source.service_date);setIfProvided('checkOutDate',source.check_out_date);setIfProvided('location',source.location);setIfProvided('supplier',source.supplier);setIfProvided('product',source.product);setIfProvided('confirmation',source.confirmation);setIfProvided('platformOrderNo',source.platform_order_no);setIfProvided('guestNames',source.guest_names||source.guestNames);setIfProvided('guestCount',source.guest_count);setIfProvided('mealPlan',source.meal_plan);setIfProvided('upstreamName',source.upstream_name);setIfProvided('paymentDeadline',localDateTimeValue(source.payment_deadline));setIfProvided('freeCancelUntil',localDateTimeValue(source.free_cancel_until));
+  if(Number(source.rooms)>0)byId('rooms').value=source.rooms;if(Number(source.nights)>0)byId('nights').value=source.nights;if(Number(source.tickets)>0)byId('tickets').value=source.tickets;
+  setSelectIfProvided('channel',source.channel);setSelectIfProvided('cancelPolicy',source.cancel_policy);setSelectIfProvided('orderStatus',source.status);byId('guestNamesDifferent').checked=Boolean(source.guest_names||source.guestNames);syncGuestNameFields();syncNightsFromDates();refreshFormPreview();clearAiDraftPreview('\u5df2\u5339\u914d\u539f\u8ba2\u5355\uff0c\u8bf7\u6838\u5bf9\u6750\u6599\u5b57\u6bb5\u540e\u4fdd\u5b58\u3002');showView('orders');
+}
+const fillFromAiDraftWithMatch=fillFromAiDraft;
+fillFromAiDraft=function(){
+  const data=aiDraft?.data||aiDraft||{},isMaterialOrder=data.intent==='order'&&assistantMaterialPayload().length>0;
+  if(isMaterialOrder&&aiDraftMatch.status==='matched'&&aiDraftMatch.order){fillMatchedMaterialDraft(aiDraftMatch.order,data.order||{});return;}
+  fillFromAiDraftWithMatch();
 };
  let currentProfile = null;
 let currentFeatures = new Set();
@@ -1482,6 +1538,7 @@ byId('memoryForm')?.addEventListener('submit',saveManualMemory);
  byId('aiProvider').addEventListener('change',event=>{if(event.target.value==='deepseek'){byId('aiBaseUrl').value='https://api.deepseek.com';if(!byId('aiModel').value||byId('aiModel').value==='gpt-4o-mini')byId('aiModel').value='deepseek-flash';}else if(event.target.value==='openai-compatible'){byId('aiBaseUrl').value='https://api.openai.com/v1';if(byId('aiModel').value==='deepseek-flash')byId('aiModel').value='gpt-4o-mini';}else{byId('aiBaseUrl').value='';}});
 byId('aiParseButton').addEventListener('click',runUnifiedAi);
 byId('aiFillButton').addEventListener('click',fillFromAiDraft);
+byId('aiDraftMatch')?.addEventListener('change',event=>{if(event.target.id==='aiDraftExistingOrder')selectAiDraftExistingOrder(event.target.value);});
 byId('assistantMaterialFiles')?.addEventListener('change',importAssistantMaterials);
 byId('clearAssistantMaterials')?.addEventListener('click',()=>{assistantMaterials=[];renderAssistantMaterials();byId('aiAccountingStatus').textContent='已清除材料';byId('aiAccountingStatus').className='ai-status';});
 byId('knowledgeForm').addEventListener('submit',saveKnowledgeDraft);

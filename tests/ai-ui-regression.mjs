@@ -10,7 +10,7 @@ const helperStart = source.indexOf('function aiValue');
 const helperEnd = source.indexOf('function renderAiDraft', helperStart);
 assert.notEqual(helperStart, -1, 'AI draft normalization helpers must exist');
 assert.notEqual(helperEnd, -1, 'AI draft normalization helper boundary must remain discoverable');
-const helpers = vm.runInNewContext(`${source.slice(helperStart, helperEnd)};({ aiSettlementMode, aiCommissionStatus, aiPaymentStatus })`);
+const helpers = vm.runInNewContext(`${source.slice(helperStart, helperEnd)};({ aiSettlementMode, aiCommissionStatus, aiPaymentStatus, resolveMaterialOrderMatch })`);
 assert.equal(helpers.aiSettlementMode({ settlement_mode: 'guest_pay_commission' }), 'guest_pay_commission');
 assert.equal(helpers.aiSettlementMode({ commission_expected: 132.21, commission_platform: '游虾' }), 'guest_pay_commission', 'commission fields should imply guest-pay settlement');
 assert.equal(helpers.aiSettlementMode({ gmv: 1926.98, cost: 1800 }), 'agency_pay');
@@ -21,6 +21,19 @@ assert.equal(helpers.aiPaymentStatus('已收款'), 'paid');
 assert.equal(helpers.aiPaymentStatus('未付款'), 'unpaid');
 assert.equal(helpers.aiPaymentStatus('部分收款'), 'partial');
 assert.equal(helpers.aiPaymentStatus(''), 'unknown');
+const existingOrders = [
+  { id: 'order-platform', orderCode: 'ORD-001', type: 'hotel', platformOrderNo: 'S228007514940', confirmation: 'C-001', supplier: '厦门W酒店', serviceDate: '2026-11-10', guestNames: '谭作明', location: '厦门', upstreamName: '道旅' },
+  { id: 'order-extension', orderCode: 'ORD-002', type: 'hotel', platformOrderNo: '', confirmation: 'C-001', supplier: '厦门W酒店', serviceDate: '2026-11-11', guestNames: '谭作明', location: '厦门' },
+];
+const platformMatch = helpers.resolveMaterialOrderMatch({ type: 'hotel', platform_order_no: 'S228007514940', service_date: '2026-11-10' }, existingOrders);
+assert.equal(platformMatch.status, 'matched', 'material with an exact platform order number should update the existing order');
+assert.equal(platformMatch.order.id, 'order-platform');
+const extensionMatch = helpers.resolveMaterialOrderMatch({ type: 'hotel', confirmation: 'C-001', supplier: '厦门W酒店', service_date: '2026-11-12' }, existingOrders);
+assert.equal(extensionMatch.status, 'ambiguous', 'same confirmation across different dates must not be auto-merged');
+const roomCardMatch = helpers.resolveMaterialOrderMatch({ type: 'hotel', supplier: '厦门W酒店', location: '厦门', service_date: '2026-11-10', guest_names: '谭作明', upstream_name: '道旅' }, existingOrders);
+assert.equal(roomCardMatch.status, 'matched', 'room-card material should use the hotel, date, guest and upstream fingerprint');
+const newMatch = helpers.resolveMaterialOrderMatch({ type: 'hotel', platform_order_no: 'NEW-1', confirmation: 'NEW-C', service_date: '2026-12-01', supplier: '广州瑰丽' }, existingOrders);
+assert.equal(newMatch.status, 'new', 'unmatched material should remain a new order');
 assert.match(source, /byId\('settlementMode'\)\.value=mode/, 'AI fill must apply settlement mode');
 assert.match(source, /byId\('commissionExpected'\)\.value=mode==='guest_pay_commission'/, 'AI fill must apply expected commission');
 assert.match(source, /byId\('commissionStatus'\)\.value=mode==='guest_pay_commission'/, 'AI fill must apply commission status');
@@ -32,6 +45,8 @@ assert.match(source, /byId\('platformOrderNo'\)\.value=aiValue\(order\.platform_
 assert.match(source, /byId\('guestCount'\)\.value=order\.guest_count/, 'AI fill must apply guest count');
 assert.match(source, /byId\('mealPlan'\)\.value=aiValue\(order\.meal_plan\)/, 'AI fill must apply meal plan');
 assert.match(source, /byId\('checkOutDate'\)\.value=aiValue\(order\.check_out_date\)/, 'AI fill must apply checkout date');
+assert.match(source, /fillMatchedMaterialDraft\(aiDraftMatch\.order,data\.order\|\|\{\}\)/, 'matched material must open the existing order instead of creating a duplicate');
+assert.match(source, /aiDraftExistingOrder/, 'ambiguous material matches must require an explicit order choice');
 assert.match(source, /function cleanMaterialText\(value\)/, 'browser must clean sensitive text before sending PDF material');
 assert.match(source, /function extractPdfMaterial\(file\)/, 'browser must extract PDF text locally');
 assert.match(source, /vendor\/pdfjs\/pdf\.min\.mjs/, 'PDF.js must be self-hosted');
