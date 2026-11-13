@@ -27,8 +27,9 @@ const accountingSchema = {
   missing_fields: 'array of Chinese field names that must be confirmed',
   notes: 'array of short Chinese notes',
   order: {
-    type: 'hotel | flight', customer: 'string', booker: 'string', order_date: 'YYYY-MM-DD', service_date: 'YYYY-MM-DD',
-    location: 'string', supplier: 'string', product: 'string', confirmation: 'string', rooms: 'number', nights: 'number',
+    type: 'hotel | flight', customer: 'string', booker: 'string', order_date: 'YYYY-MM-DD', service_date: 'YYYY-MM-DD', check_out_date: 'YYYY-MM-DD',
+    location: 'string', supplier: 'string', product: 'string', confirmation: 'string', platform_order_no: 'string', rooms: 'number', nights: 'number',
+    guest_names: 'string', guest_count: 'number', meal_plan: 'string', channel: 'travel_agency | booking_desk | ota | room_card | empty', upstream_name: 'string', payment_deadline: 'ISO datetime', cancel_policy: 'refundable | non_refundable | unknown', free_cancel_until: 'ISO datetime',
     tickets: 'number', gmv: 'number', cost: 'number', received: 'number', customer_received: 'number', payment_status: 'paid | partial | unpaid | refunded', customer_payment_status: 'paid | partial | unpaid | refunded | not_applicable', supplier_paid: 'number', supplier_payment_status: 'paid | partial | unpaid | unknown | not_required', payment_platform: 'string',
     status: 'booked | confirming | confirmed | cancelled | pending | ticketed | refunded', settlement_mode: 'agency_pay | guest_pay_commission | no_funds',
     guest_payment_to: 'string', commission_platform: 'string', commission_status: 'pending | partial | received | none',
@@ -38,7 +39,7 @@ const accountingSchema = {
 };
 
 const systemPrompt = (today: string) => `你是酒店和机票运营台账助手。今天是 ${today}。把用户的中文自然语言转换成可审核的结构化记账草稿。只输出一个 JSON 对象，不要 Markdown，不要解释文字。严格遵守以下结构：${JSON.stringify(accountingSchema)}。
-  规则：不要臆造金额、日期、客户、供应商、房型或确认号；缺失且会影响入账的字段放入 missing_fields。“今天、明天、后天”按今天 ${today} 计算。酒店“住2晚”填 nights=2，房晚由系统按 rooms × nights 计算。客人在前台付款、平台之后返佣属于 commission，订单成本填 0；返佣平台、预计佣金、已收佣金、直接费用分别填入对应字段。收到、收款、返佣到账优先识别为 payment 或 commission，不要新建订单。客户已收款时将 customer_payment_status 和 payment_status 设为 paid；若未明确客户已收金额但已提供 gmv，将 received 设为 gmv。供应商或平台已付款时将 supplier_payment_status 设为 paid，并在未提供 supplier_paid 时用 cost；供应商或平台未付款时设为 unpaid。供应商或平台付款状态与客户收款状态必须分别填入各自字段，不要混用。付款状态不明确时不要默认已付款，放入 missing_fields。无法判断时 intent=unknown。所有数字必须是数字，无法确定时不要猜。若 user 内容中提供 materials，材料文字已经在浏览器和服务端屏蔽电话、邮箱，按材料中明确写出的字段读取；不要把被标记为 [已屏蔽] 的内容还原或猜测。普通代付订单不从材料读取销售价，返佣订单只读取明确标注人民币的客人实付金额。`;
+  规则：不要臆造金额、日期、客户、供应商、房型或确认号；缺失且会影响入账的字段放入 missing_fields。“今天、明天、后天”按今天 ${today} 计算。酒店“住2晚”填 nights=2，房晚由系统按 rooms × nights 计算。客人在前台付款、平台之后返佣属于 commission，订单成本填 0；返佣平台、预计佣金、已收佣金、直接费用分别填入对应字段。收到、收款、返佣到账优先识别为 payment 或 commission，不要新建订单。客户已收款时将 customer_payment_status 和 payment_status 设为 paid；若未明确客户已收金额但已提供 gmv，将 received 设为 gmv。供应商或平台已付款时将 supplier_payment_status 设为 paid，并在未提供 supplier_paid 时用 cost；供应商或平台未付款时设为 unpaid。供应商或平台付款状态与客户收款状态必须分别填入各自字段，不要混用。付款状态不明确时不要默认已付款，放入 missing_fields。无法判断时 intent=unknown。所有数字必须是数字，无法确定时不要猜。若 user 内容中提供 materials，材料文字已经在浏览器和服务端屏蔽电话、邮箱，按材料中明确写出的字段读取；不要把被标记为 [已屏蔽] 的内容还原或猜测。普通代付订单不从材料读取销售价、成本、客户收款状态、供应商付款状态、付款平台、预订人、客户或开票信息，这些留空由销售商手动填写。返佣订单只读取明确标注人民币的客人实付金额。材料中的 Reference Number / 订单号 / S 开头编号必须填 platform_order_no，不得填 confirmation；Hotel Confirmation Code / 酒店确认号才填 confirmation。`;
 
 const analysisPrompt = `你是酒店运营分析说明助手。前端已经用确定性规则完成统计，下面只提供统计结果和口径。只根据 context 中的事实组织简洁中文回答，不要重新计算、补造数据、生成 SQL 或修改订单。必须说明统计范围、日期口径和关键金额；数据不足时直接说明“当前数据不足以判断”。只输出 JSON：{"answer":"中文回答","key_points":["要点"],"limitations":["必要时说明限制"]}。`;
 
@@ -55,7 +56,7 @@ const chatPrompt = (today: string) => `你是酒店运营与旅行知识工作�
 7. 没有实时天气、库存、价格、航班或签证工具时，必须明确说明当前没有对应实时查询能力。
  8. 最终只输出 JSON：{"answer":"中文回答","needs_clarification":false,"unsupported":false}。统计和专项查询回答必须引用工具返回的范围、日期口径和结果，不得自行重算或编造明细。
   9. 只有用户明确说“记住、以后默认、以后都按、这是我们的规则”等内容时，才可以调用 draft_memory；它只生成待确认草稿，必须等用户点击保存后才会进入长期记忆。普通聊天、订单事实和一次性筛选条件不要写入长期记忆。
-  10. 如果 materials 非空，优先把材料作为本次问题的事实来源；只能读取材料明确出现的内容，读不到就留空或要求用户补充，不要用文件名猜酒店、日期、金额或订单号。`;
+  10. 如果 materials 非空，优先把材料作为本次问题的事实来源；只能读取材料明确出现的内容，读不到就留空或要求用户补充，不要用文件名猜酒店、日期、金额或订单号。材料建单时 customer、booker、gmv、cost、customer_payment_status、supplier_payment_status、payment_platform、invoice_company 必须留空，交给销售商手动填写。材料中的 Reference Number、Order Number 或 S 开头编号写入 platform_order_no，Hotel Confirmation Code 写入 confirmation，不能把平台订单号当酒店确认号。`;
 
 const chatToolRoutingRule = `补充规则：用户要求修改、统一、替换、批量修改已有订单字段时，必须调用 draft_data_change，先查询并返回待确认预览；如果提供了唯一订单编号、确认号或客户线索，可以省略 from_value，由工具自动读取当前值；禁止调用 draft_accounting，也禁止直接写入数据库。用户确认后才允许服务端执行修改。酒店/航司名称归入 supplier，房型/航班归入 product，城市/航线归入 location。`;
 
@@ -280,8 +281,8 @@ const chatTools = [
             additionalProperties: false,
             properties: {
               type: { type: 'string' }, customer: { type: 'string' }, booker: { type: 'string' }, order_date: { type: 'string' },
-              service_date: { type: 'string' }, location: { type: 'string' }, supplier: { type: 'string' }, product: { type: 'string' },
-              confirmation: { type: 'string' }, rooms: { type: 'number' }, nights: { type: 'number' }, tickets: { type: 'number' },
+              service_date: { type: 'string' }, check_out_date: { type: 'string' }, location: { type: 'string' }, supplier: { type: 'string' }, product: { type: 'string' },
+              confirmation: { type: 'string' }, platform_order_no: { type: 'string' }, guest_names: { type: 'string' }, guest_count: { type: 'number' }, meal_plan: { type: 'string' }, channel: { type: 'string' }, upstream_name: { type: 'string' }, payment_deadline: { type: 'string' }, cancel_policy: { type: 'string' }, free_cancel_until: { type: 'string' }, rooms: { type: 'number' }, nights: { type: 'number' }, tickets: { type: 'number' },
               gmv: { type: 'number' }, cost: { type: 'number' }, received: { type: 'number' }, customer_received: { type: 'number' }, payment_status: { type: 'string' }, customer_payment_status: { type: 'string' }, supplier_paid: { type: 'number' }, supplier_payment_status: { type: 'string' }, payment_platform: { type: 'string' },
               status: { type: 'string' }, settlement_mode: { type: 'string', enum: ['agency_pay', 'guest_pay_commission', 'no_funds'] },
               guest_payment_to: { type: 'string' }, commission_platform: { type: 'string' }, commission_status: { type: 'string', enum: ['pending', 'partial', 'received', 'none'] },
@@ -324,6 +325,26 @@ const customerPaymentLabelMap: Record<string, string> = { paid: '\u5df2\u6536\u6
 
 function normalizedText(value: unknown) {
   return String(value || '').trim().toLocaleLowerCase();
+}
+function normalizeMaterialDraft(draft: Record<string, unknown>, hasMaterials: boolean) {
+  if (!hasMaterials || !draft || typeof draft.order !== 'object' || !draft.order) return draft;
+  const order = { ...(draft.order as Record<string, unknown>) };
+  order.customer = '';
+  order.booker = '';
+  order.gmv = undefined;
+  order.cost = undefined;
+  order.received = undefined;
+  order.customer_received = undefined;
+  order.payment_status = undefined;
+  order.customer_payment_status = undefined;
+  order.supplier_paid = undefined;
+  order.supplier_payment_status = undefined;
+  order.payment_platform = '';
+  if (!String(order.platform_order_no || '').trim() && /^s\w+/i.test(String(order.confirmation || '').trim())) {
+    order.platform_order_no = String(order.confirmation).trim();
+    order.confirmation = '';
+  }
+  return { ...draft, order };
 }
 
 const materialEmailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
@@ -555,7 +576,7 @@ async function persistPendingAction(adminClient: any, userId: string, conversati
   return { ...action, pending_action_id: data.id, status: 'pending_confirmation' };
 }
 
-async function executeChatTool(toolName: string, args: Record<string, unknown>, client: any, today: string) {
+async function executeChatTool(toolName: string, args: Record<string, unknown>, client: any, today: string, hasMaterials = false) {
   if (toolName === 'search_knowledge') {
     const query = String(args.query || '').toLowerCase();
     const { data, error } = await client
@@ -661,7 +682,7 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
     return { query_result: { kind: 'other_income', title: '其它收入 / 支出', start, end, matched_count: matches.length, income_total: matches.reduce((sum, income: Record<string, unknown>) => sum + numberValue(income.amount), 0), expense_total: matches.reduce((sum, income: Record<string, unknown>) => sum + numberValue(income.expense), 0), net_total: matches.reduce((sum, income: Record<string, unknown>) => sum + numberValue(income.amount) - numberValue(income.expense), 0), records, truncated: matches.length > records.length } };
   }
 
-  if (toolName === 'draft_accounting') return { draft: args };
+  if (toolName === 'draft_accounting') return { draft: normalizeMaterialDraft(args, hasMaterials) };
   if (toolName === 'draft_data_change') {
     const target = String(args.target || '');
     const statusLabels: Record<string, string> = { booked: '预订中', confirming: '确认中', confirmed: '已确认', cancelled: '已取消', pending: '待出票', ticketed: '已出票', refunded: '已退票', '预订中': '预订中', '确认中': '确认中', '已确认': '已确认', '已取消': '已取消', '待出票': '待出票', '已出票': '已出票', '已退票': '已退票', '已退款': '已退票' };
@@ -961,7 +982,7 @@ Deno.serve(async (request) => {
           try { args = JSON.parse(call?.function?.arguments || '{}'); } catch { args = {}; }
           let toolResult: Record<string, unknown>;
           try {
-            toolResult = await executeChatTool(toolName, args, userClient, today);
+            toolResult = await executeChatTool(toolName, args, userClient, today, materials.length > 0);
           } catch (error) {
             toolResult = { error: error instanceof Error ? error.message : '工具执行失败' };
           }
@@ -1003,7 +1024,7 @@ Deno.serve(async (request) => {
     const result = await callModel(baseUrl, apiKey, { model, temperature, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: prompt }, { role: 'user', content }] });
     const modelContent = result?.choices?.[0]?.message?.content;
     if (typeof modelContent !== 'string') return json({ error: '模型没有返回可识别结果' }, 502);
-    return json({ data: parseModelJson(modelContent), model, mode });
+    return json({ data: normalizeMaterialDraft(parseModelJson(modelContent), materials.length > 0), model, mode, materials_used: materials.length });
   } catch (error) {
     await updateAssistantRun(adminClient, runId, { status: 'failed', current_step: 'failed', error_message: error instanceof Error ? error.message : 'unknown error', completed_at: new Date().toISOString() });
     return json({ error: error instanceof Error ? error.message : 'AI 处理失败' }, 500);

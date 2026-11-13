@@ -433,8 +433,26 @@ function fillFromAiDraft(){
      const aiCustomer=aiValue(order.customer),aiGuestNames=aiValue(order.guest_names||order.guestNames);byId('openOrderDialog').click();setOrderType(order.type==='flight'?'flight':'hotel');byId('customer').value=aiCustomer||aiGuestNames;byId('booker').value=aiValue(order.booker);byId('guestNames').value=aiGuestNames;byId('guestNamesDifferent').checked=Boolean(aiGuestNames&&aiCustomer&&aiGuestNames!==aiCustomer);syncGuestNameFields();byId('orderDate').value=aiValue(order.order_date)||today;byId('serviceDate').value=aiValue(order.service_date)||today;byId('checkOutDate').value=aiValue(order.check_out_date)||'';byId('location').value=aiValue(order.location);byId('supplier').value=aiValue(order.supplier);byId('product').value=aiValue(order.product);byId('confirmation').value=aiValue(order.confirmation);byId('rooms').value=order.rooms||1;byId('nights').value=order.nights||'';byId('nights').dataset.autoCalculated=order.nights?'false':'true';byId('tickets').value=order.tickets||1;byId('gmv').value=gmv;byId('cost').value=mode==='guest_pay_commission'?0:(order.cost||0);byId('settlementMode').value=mode;byId('guestPaymentTo').value=mode==='guest_pay_commission'?(aiValue(order.guest_payment_to)||'酒店前台'):'';byId('commissionPlatform').value=mode==='guest_pay_commission'?(aiValue(order.commission_platform)||aiValue(order.payment_platform)):'';byId('commissionExpected').value=mode==='guest_pay_commission'?expectedCommission:'';byId('commissionReceived').value=mode==='guest_pay_commission'?receivedCommission:'';byId('commissionStatus').value=mode==='guest_pay_commission'?aiCommissionStatus(order):'none';byId('commissionReceivedDate').value=mode==='guest_pay_commission'?aiValue(order.commission_received_date):'';byId('directCost').value=mode==='guest_pay_commission'?(order.direct_cost||0):'';byId('paymentStatus').value=mode==='guest_pay_commission'?'not_applicable':customerStatus;byId('received').value=mode==='guest_pay_commission'?0:received;byId('paymentPlatform').value=mode==='guest_pay_commission'?'':aiValue(order.payment_platform);byId('supplierPaymentStatus').value=mode==='guest_pay_commission'?'not_required':supplierStatus;byId('supplierPaid').value=supplierPaid;byId('orderStatus').value=order.status||'booked';syncSettlementFields();syncNightsFromDates();refreshFormPreview();clearAiDraftPreview();showView('orders');return;}
   if(data.intent==='other_income'||data.intent==='other_expense'){openOtherIncomeForm();byId('otherIncomeDate').value=aiValue(income.date)||today;byId('otherIncomeName').value=aiValue(income.name)||'一句话记账';byId('otherIncomePayer').value=aiValue(income.payer);byId('otherIncomePayee').value=aiValue(income.payee);byId('otherIncomeAmount').value=income.amount||0;byId('otherIncomeExpense').value=income.expense||0;byId('otherIncomeNet').textContent=compactCurrency(Number(income.amount||0)-Number(income.expense||0));clearAiDraftPreview();showView('otherIncome');return;}
   const search=aiValue(income.search_text)||aiValue(order.confirmation)||aiValue(order.customer);const candidate=orders.filter(item=>orderSearchText(item).includes(search.toLowerCase()));if(candidate.length===1){openDetails(candidate[0].id);window.alert(`已找到匹配订单 ${orderCode(candidate[0])}，请在详情中登记收款或返佣。`);}else{window.alert('这句话需要关联已有订单，请补充订单编号、确认号或客户姓名后再识别。');}
-}
-let currentProfile = null;
+ }
+const fillFromAiDraftBase=fillFromAiDraft;
+fillFromAiDraft=function(){
+  const data=aiDraft?.data||aiDraft||{},order=data.order||{},guestNames=aiValue(order.guest_names||order.guestNames);
+  const looksLikeMaterial=Boolean(guestNames&&(order.platform_order_no||order.check_out_date||order.guest_count||order.meal_plan));
+  fillFromAiDraftBase();
+  if(data.intent!=='order')return;
+  byId('platformOrderNo').value=aiValue(order.platform_order_no);
+  byId('guestCount').value=order.guest_count||'';
+  byId('mealPlan').value=aiValue(order.meal_plan);
+  byId('checkOutDate').value=aiValue(order.check_out_date)||'';
+  byId('channel').value=aiValue(order.channel);
+  byId('upstreamName').value=aiValue(order.upstream_name);
+  byId('paymentDeadline').value=localDateTimeValue(order.payment_deadline);
+  byId('cancelPolicy').value=aiValue(order.cancel_policy)||'unknown';
+  byId('freeCancelUntil').value=localDateTimeValue(order.free_cancel_until);
+  if(looksLikeMaterial){byId('customer').value='';byId('booker').value='';byId('guestNames').value=guestNames;byId('guestNamesDifferent').checked=Boolean(guestNames);syncGuestNameFields();}
+  syncNightsFromDates();refreshFormPreview();
+};
+ let currentProfile = null;
 let currentFeatures = new Set();
 let adminUsers = [];
 let selectedAdminUserId = null;

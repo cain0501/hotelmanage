@@ -25,6 +25,13 @@ assert.match(source, /function paymentPlatformRecord\(order: Record<string, unkn
 assert.match(source, /groupBy === 'payment_platform' \? paymentPlatformRecord\(order\)/, 'AI platform grouping must include commission platforms');
 assert.match(source, /received: 'number', customer_received: 'number'/, 'accounting drafts must expose customer receipt amounts');
 assert.match(source, /customer_payment_status 和 payment_status 设为 paid/, 'accounting prompt must keep customer and supplier payment facts separate');
+assert.match(source, /platform_order_no/, 'accounting drafts must expose platform order number separately from hotel confirmation');
+assert.match(source, /check_out_date/, 'material drafts must expose checkout date');
+assert.match(source, /guest_count.*meal_plan/, 'material drafts must expose guest count and meal plan');
+assert.match(source, /order\.customer = ''/, 'material drafts must leave salesperson-owned customer blank');
+assert.match(source, /order\.booker = ''/, 'material drafts must leave salesperson-owned booker blank');
+assert.match(source, /order\.gmv = undefined/, 'material drafts must leave salesperson-owned GMV blank');
+assert.match(source, /Hotel Confirmation Code/, 'material prompt must distinguish hotel confirmation code from platform order number');
 assert.match(source, /function cleanMaterialText/, 'server must clean sensitive text from PDF material payloads');
 assert.match(source, /materialEmailPattern/, 'server must remove email addresses from material text');
 assert.match(source, /materialMobilePattern/, 'server must remove mobile numbers from material text');

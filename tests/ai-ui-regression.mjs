@@ -28,6 +28,10 @@ assert.match(source, /byId\('received'\)\.value=/, 'AI fill must apply customer 
 assert.match(source, /customer_payment_status/, 'AI fill must prefer explicit customer payment status');
 assert.match(source, /byId\('supplierPaymentStatus'\)\.value=/, 'AI fill must apply supplier payment status');
 assert.match(source, /supplierPaidValue>=supplierCost\?'paid':'partial'/, 'AI fill must infer supplier status from paid amount when the draft omits it');
+assert.match(source, /byId\('platformOrderNo'\)\.value=aiValue\(order\.platform_order_no\)/, 'AI fill must apply platform order number separately');
+assert.match(source, /byId\('guestCount'\)\.value=order\.guest_count/, 'AI fill must apply guest count');
+assert.match(source, /byId\('mealPlan'\)\.value=aiValue\(order\.meal_plan\)/, 'AI fill must apply meal plan');
+assert.match(source, /byId\('checkOutDate'\)\.value=aiValue\(order\.check_out_date\)/, 'AI fill must apply checkout date');
 assert.match(source, /function cleanMaterialText\(value\)/, 'browser must clean sensitive text before sending PDF material');
 assert.match(source, /function extractPdfMaterial\(file\)/, 'browser must extract PDF text locally');
 assert.match(source, /vendor\/pdfjs\/pdf\.min\.mjs/, 'PDF.js must be self-hosted');
