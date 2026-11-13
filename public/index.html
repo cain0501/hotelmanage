@@ -342,7 +342,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-          <small class="app-version">版本 20261113-77</small>
+          <small class="app-version">版本 20261113-78</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -618,7 +618,7 @@
         <div class="type-switch"><button type="button" class="selected" data-order-type="hotel">酒店订单</button><button type="button" data-order-type="flight">机票订单</button></div>
         <input type="hidden" id="formType" value="hotel" />
         <div class="form-grid">
-          <label>客户<input required id="customer" placeholder="客户姓名或公司" /></label>
+          <label>客户 / 入住人<input required id="customer" placeholder="默认客户就是入住人" /></label>
           <label>预订人<input id="booker" placeholder="内部人员 / 渠道" /></label>
           <label>下单日期<input required id="orderDate" type="date" /></label>
           <label id="serviceDateLabel">入住日期<input required id="serviceDate" type="date" /></label>
@@ -626,7 +626,8 @@
           <label>确认号 / 票号<input id="confirmation" placeholder="选填" /></label>
           <label>订单渠道<select id="channel"><option value="">未分类</option><option value="travel_agency">旅行社订单</option><option value="booking_desk">预订部 / 销售 / 同行</option><option value="ota">OTA</option><option value="room_card">房卡房</option></select></label>
           <label>平台订单号<input id="platformOrderNo" placeholder="如：S227607851239" /></label>
-          <label>入住人<input id="guestNames" placeholder="可填写多人，用逗号分隔" /></label>
+          <label class="form-checkbox"><input id="guestNamesDifferent" type="checkbox" /><span>入住人不同</span><small>默认使用客户姓名</small></label>
+          <label id="guestNamesLabel" class="hidden">实际入住人<input id="guestNames" placeholder="可填写多人，用逗号分隔" /></label>
           <label>入住人数<input id="guestCount" type="number" min="0" step="1" placeholder="选填" /></label>
           <label>餐型<input id="mealPlan" placeholder="如：含早餐 / 无早" /></label>
           <label class="hotel-only">离店日期<input id="checkOutDate" type="date" /></label>
@@ -757,9 +758,9 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
-    <script src="shared/domain.js?v=20261113-77"></script>
-    <script src="shared/calculator.js?v=20261113-77"></script>
-    <script src="app.js?v=20261113-77"></script>
-    <script>document.querySelector('.app-version').textContent='\u7248\u672c 20261113-77';</script>
+    <script src="shared/domain.js?v=20261113-78"></script>
+    <script src="shared/calculator.js?v=20261113-78"></script>
+    <script src="app.js?v=20261113-78"></script>
+    <script>document.querySelector('.app-version').textContent='\u7248\u672c 20261113-78';</script>
   </body>
 </html>

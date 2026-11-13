@@ -52,6 +52,10 @@
   .detail-actions{gap:8px;flex-wrap:wrap}
   .detail-actions>div{display:flex;gap:6px;flex-wrap:wrap}
 }
+.form-grid .form-checkbox{display:grid!important;grid-template-columns:auto 1fr;grid-template-rows:auto auto;align-items:center;column-gap:8px;row-gap:2px;padding:9px 10px;border:1px dashed var(--line);border-radius:4px;background:#fbf7ef;cursor:pointer}
+.form-grid .form-checkbox input{width:auto;margin:0;grid-row:1 / span 2;accent-color:var(--ink)}
+.form-grid .form-checkbox span{color:var(--ink);font-size:13px}
+.form-grid .form-checkbox small{color:var(--muted);font-size:10px}
 
 /* Hotel portfolio ranking: readable operating facts instead of a compressed bubble plot. */
 .bubble-panel .dashboard-chart{height:auto;min-height:0;padding:8px 20px 22px}

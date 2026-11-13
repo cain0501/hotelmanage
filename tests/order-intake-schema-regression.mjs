@@ -11,9 +11,11 @@ const [source, html, migration, schema] = await Promise.all([
   readFile(resolve(root, 'supabase-schema.sql'), 'utf8'),
 ]);
 
-for (const id of ['channel', 'platformOrderNo', 'guestNames', 'guestCount', 'mealPlan', 'checkOutDate', 'upstreamName', 'paymentDeadline', 'cancelPolicy', 'freeCancelUntil']) {
+for (const id of ['channel', 'platformOrderNo', 'guestNamesDifferent', 'guestNamesLabel', 'guestNames', 'guestCount', 'mealPlan', 'checkOutDate', 'upstreamName', 'paymentDeadline', 'cancelPolicy', 'freeCancelUntil']) {
   assert.match(html, new RegExp(`id="${id}"`), `order form must expose ${id}`);
 }
+assert.match(source, /guestNamesDifferent.*checked\?byId\('guestNames'\)\.value\.trim\(\):customerName/, 'same customer and guest should reuse the customer field by default');
+assert.match(source, /function syncGuestNameFields\(\)/, 'different guest toggle must control the extra guest field');
 for (const field of ['channel', 'platform_order_no', 'guest_names', 'guest_count', 'meal_plan', 'check_out_date', 'upstream_name', 'payment_deadline', 'cancel_policy', 'free_cancel_until']) {
   assert.match(source, new RegExp(field), `browser mapping must include ${field}`);
   assert.match(migration, new RegExp(`add column if not exists ${field}`), `migration must add ${field}`);
