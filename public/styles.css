@@ -56,6 +56,8 @@
 .form-grid .form-checkbox input{width:auto;margin:0;grid-row:1 / span 2;accent-color:var(--ink)}
 .form-grid .form-checkbox span{color:var(--ink);font-size:13px}
 .form-grid .form-checkbox small{color:var(--muted);font-size:10px}
+.assistant-material-box{display:grid;gap:8px;padding:11px 12px;background:#fbf7ef;border:1px dashed var(--line);border-radius:6px}
+.assistant-material-head{display:flex;justify-content:space-between;gap:10px;align-items:start}.assistant-material-head strong,.assistant-material-head small{display:block}.assistant-material-head strong{font-size:12px;color:var(--ink)}.assistant-material-head small{margin-top:3px;color:var(--muted);font-size:10px;line-height:1.45}.assistant-material-picker{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;background:#fffdf8;border:1px solid var(--line);border-radius:4px;color:#716d65;font-size:11px;cursor:pointer}.assistant-material-picker input{width:auto;border:0;padding:0;background:transparent;font-size:11px}.assistant-material-list{display:grid;gap:6px}.assistant-material-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 9px;background:#fffdf8;border-radius:4px;font-size:11px}.assistant-material-row b{display:block;overflow-wrap:anywhere}.assistant-material-row small{display:block;margin-top:3px;color:var(--muted);line-height:1.4}.assistant-material-row .status{white-space:nowrap}.assistant-material-row.error{background:#fff0ed;color:#934c3f}.assistant-material-row.error small{color:#934c3f}
 
 /* Hotel portfolio ranking: readable operating facts instead of a compressed bubble plot. */
 .bubble-panel .dashboard-chart{height:auto;min-height:0;padding:8px 20px 22px}

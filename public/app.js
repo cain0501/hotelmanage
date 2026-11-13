@@ -71,6 +71,7 @@ let assistantKnowledge = [];
 let assistantMemories = [];
 let assistantMemoryDraft = null;
 let assistantWorkspaceAvailable = false;
+let assistantMaterials = [];
 let cleanupPreviewOrders = [];
 let cleanupPreviewField = '';
 let cleanupPreviewFrom = '';
@@ -82,6 +83,37 @@ let ledgerAvailable = false;
 let pendingImport = null;
 
 const byId = id => document.getElementById(id);
+const materialEmailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const materialMobilePattern = /(?:\+?86[\s-]?)?1[3-9]\d{9}/g;
+const materialLandlinePattern = /(?:\+?\d{1,3}[\s-]?)?0\d{2,3}[\s-]?\d{7,8}(?:[\s-]?(?:转|ext\.?)[\s-]?\d{1,6})?/gi;
+const materialLabeledPhonePattern = /(?:电话|手机|手机号|联系电话|tel(?:ephone)?|mobile)\s*[:：]?\s*[+\d][\d\s().-]{6,}/gi;
+function cleanMaterialText(value){
+  let text=String(value||''),redactions=0;
+  const redact=pattern=>{text=text.replace(pattern,()=>{redactions+=1;return '[已屏蔽]';});};
+  redact(materialEmailPattern);redact(materialLabeledPhonePattern);redact(materialMobilePattern);redact(materialLandlinePattern);
+  return {text,redactions};
+}
+function renderAssistantMaterials(){
+  const list=byId('assistantMaterialList'),clear=byId('clearAssistantMaterials');if(!list)return;
+  clear.hidden=!assistantMaterials.length;
+  list.innerHTML=assistantMaterials.length?assistantMaterials.map(item=>`<div class="assistant-material-row ${item.error?'error':''}"><div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.error||`${item.pages} 页 · 已清洗 ${item.redactions} 处电话 / 邮箱` )}</small></div><span class="status ${item.error?'unpaid':'paid'}">${item.error?'需手工处理':'已清洗'}</span></div>`).join(''):'<span class="ai-status">尚未添加材料，图片涂抹和读图将在下一切片加入。</span>';
+}
+async function extractPdfMaterial(file){
+  const pdfjs=await import('./vendor/pdfjs/pdf.min.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc=new URL('./vendor/pdfjs/pdf.worker.min.mjs',document.baseURI).href;
+  const pdf=await pdfjs.getDocument({data:await file.arrayBuffer()}).promise,pages=[];
+  for(let pageNumber=1;pageNumber<=pdf.numPages;pageNumber+=1){const page=await pdf.getPage(pageNumber);const content=await page.getTextContent();pages.push(content.items.map(item=>item.str||'').join(' '));}
+  const cleaned=cleanMaterialText(pages.join('\n\n').trim());
+  if(cleaned.text.replace(/\s|\[已屏蔽\]/g,'').length<20)throw new Error('未提取到可用文字，疑似扫描版 PDF，请手工处理');
+  return {name:file.name,pages:pdf.numPages,text:cleaned.text,redactions:cleaned.redactions};
+}
+async function importAssistantMaterials(){
+  const input=byId('assistantMaterialFiles'),files=[...(input?.files||[])];if(!files.length)return;
+  const status=byId('aiAccountingStatus');status.textContent='正在浏览器本地读取并清洗 PDF…';status.className='ai-status';
+  for(const file of files){try{assistantMaterials.push(await extractPdfMaterial(file));}catch(error){assistantMaterials.push({name:file.name,pages:0,text:'',redactions:0,error:error.message});}}
+  if(input)input.value='';renderAssistantMaterials();status.textContent=assistantMaterials.some(item=>item.error)?'部分材料无法提取，请手工处理扫描版 PDF。':'材料已清洗，可继续输入问题并交给 AI。';status.className=assistantMaterials.some(item=>item.error)?'ai-status error':'ai-status success';
+}
+function assistantMaterialPayload(){return assistantMaterials.filter(item=>!item.error&&item.text).map(item=>({name:item.name,pages:item.pages,text:item.text,redactions:item.redactions}));}
 const SUPABASE_URL = 'https://onomizgpzhqrmiuqeikf.supabase.co';
 // Publishable key 只能用于浏览器端，RLS 才是数据安全边界；不要替换成 service_role key。
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_PfLkfwLJTSGCIchlm3_xiQ_LuLj_JOC';
@@ -364,7 +396,7 @@ function renderPendingActionPreview(action){
 function clearPendingAction(){assistantPendingAction=null;const panel=byId('aiPendingActionPanel');if(panel){panel.hidden=true;panel.innerHTML='';}}
 async function parseAiAccounting(){
   const text=byId('aiAccountingText').value.trim(),button=byId('aiParseButton'),status=byId('aiAccountingStatus');if(!text){status.textContent='请先输入一句话';status.className='ai-status error';return;}if(!aiSettings.enabled){status.textContent='请先在右侧启用模型配置';status.className='ai-status error';return;}button.disabled=true;button.textContent='识别中…';status.textContent='正在让模型整理字段…';status.className='ai-status';
-  try{const {data:sessionData}=await supabaseClient.auth.getSession();const response=await fetch(`${SUPABASE_URL}/functions/v1/ai-accounting`,{method:'POST',headers:{Authorization:`Bearer ${sessionData.session?.access_token||''}`,'Content-Type':'application/json'},body:JSON.stringify({text,conversation_id:assistantConversationId,...assistantModelContext()})});const result=await response.json();if(!response.ok)throw new Error(result.error||'AI识别失败');aiDraft=result;renderAiDraft();status.textContent=`已生成草稿 · ${aiIntentText(result.data?.intent)} · 请确认后填入表单`;status.className='ai-status success';await saveAssistantMessage('assistant',`已生成${aiIntentText(result.data?.intent)}草稿，请确认后再填入表单。`,{intent:result.data?.intent||'unknown'});}catch(error){status.textContent=error.message;status.className='ai-status error';}finally{button.disabled=false;button.textContent='交给 AI 处理';}
+  try{const {data:sessionData}=await supabaseClient.auth.getSession();const response=await fetch(`${SUPABASE_URL}/functions/v1/ai-accounting`,{method:'POST',headers:{Authorization:`Bearer ${sessionData.session?.access_token||''}`,'Content-Type':'application/json'},body:JSON.stringify({text,conversation_id:assistantConversationId,materials:assistantMaterialPayload(),...assistantModelContext()})});const result=await response.json();if(!response.ok)throw new Error(result.error||'AI识别失败');aiDraft=result;renderAiDraft();status.textContent=`已生成草稿 · ${aiIntentText(result.data?.intent)} · 请确认后填入表单`;status.className='ai-status success';await saveAssistantMessage('assistant',`已生成${aiIntentText(result.data?.intent)}草稿，请确认后再填入表单。`,{intent:result.data?.intent||'unknown'});}catch(error){status.textContent=error.message;status.className='ai-status error';}finally{button.disabled=false;button.textContent='交给 AI 处理';}
 }
 function renderGeneralAssistant(result,model='模型回答'){
   const panel=byId('analysisResult');if(!panel)return;const data=result?.data||result||{};const sources=Array.isArray(data.knowledge_sources)?data.knowledge_sources:[];panel.className='analysis-result';panel.hidden=false;panel.innerHTML=`<div class="analysis-answer"><span class="quality-smart-tag">${escapeHtml(model)}</span><p>${escapeHtml(data.answer||'暂时没有可回答的内容。')}</p></div>${sources.length?`<div class="analysis-scope"><strong>参考知识：</strong>${sources.map(source=>escapeHtml(source.title||'未命名知识')).join('、')}</div>`:''}${data.unsupported?'<div class="analysis-scope"><strong>能力边界：</strong>当前没有对应的实时工具，以上不是实时查询结果。</div>':''}`;
@@ -1432,6 +1464,8 @@ byId('memoryForm')?.addEventListener('submit',saveManualMemory);
  byId('aiProvider').addEventListener('change',event=>{if(event.target.value==='deepseek'){byId('aiBaseUrl').value='https://api.deepseek.com';if(!byId('aiModel').value||byId('aiModel').value==='gpt-4o-mini')byId('aiModel').value='deepseek-flash';}else if(event.target.value==='openai-compatible'){byId('aiBaseUrl').value='https://api.openai.com/v1';if(byId('aiModel').value==='deepseek-flash')byId('aiModel').value='gpt-4o-mini';}else{byId('aiBaseUrl').value='';}});
 byId('aiParseButton').addEventListener('click',runUnifiedAi);
 byId('aiFillButton').addEventListener('click',fillFromAiDraft);
+byId('assistantMaterialFiles')?.addEventListener('change',importAssistantMaterials);
+byId('clearAssistantMaterials')?.addEventListener('click',()=>{assistantMaterials=[];renderAssistantMaterials();byId('aiAccountingStatus').textContent='已清除材料';byId('aiAccountingStatus').className='ai-status';});
 byId('knowledgeForm').addEventListener('submit',saveKnowledgeDraft);
 byId('scanDataQuality').addEventListener('click',()=>{byId('aiCleaningResults').innerHTML='<span class="ai-status">正在扫描订单字段和重复记录…</span>';setTimeout(renderDataCleaning,0);});
 byId('previewCleanup').addEventListener('click',renderCleanupPreview);
@@ -1561,7 +1595,7 @@ async function runAssistantChat(question){
   button.disabled=true;button.textContent='处理中…';status.textContent='AI 正在理解你的问题…';status.className='ai-status';
   try{
     const {data:sessionData}=await supabaseClient.auth.getSession();
-    const response=await fetch(`${SUPABASE_URL}/functions/v1/ai-accounting`,{method:'POST',headers:{Authorization:`Bearer ${sessionData.session?.access_token||''}`,'Content-Type':'application/json'},body:JSON.stringify({mode:'chat',text:question,conversation_id:assistantConversationId,...assistantModelContext()})});
+    const response=await fetch(`${SUPABASE_URL}/functions/v1/ai-accounting`,{method:'POST',headers:{Authorization:`Bearer ${sessionData.session?.access_token||''}`,'Content-Type':'application/json'},body:JSON.stringify({mode:'chat',text:question,conversation_id:assistantConversationId,materials:assistantMaterialPayload(),...assistantModelContext()})});
     const result=await response.json();if(!response.ok)throw new Error(result.error||'AI处理失败');
     const data=result.data||{};
     aiDraft=null;byId('aiDraftPanel').hidden=true;clearPendingAction();renderAssistantMemoryDraft(data.memory_draft||null);

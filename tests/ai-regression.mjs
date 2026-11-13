@@ -25,6 +25,10 @@ assert.match(source, /function paymentPlatformRecord\(order: Record<string, unkn
 assert.match(source, /groupBy === 'payment_platform' \? paymentPlatformRecord\(order\)/, 'AI platform grouping must include commission platforms');
 assert.match(source, /received: 'number', customer_received: 'number'/, 'accounting drafts must expose customer receipt amounts');
 assert.match(source, /customer_payment_status 和 payment_status 设为 paid/, 'accounting prompt must keep customer and supplier payment facts separate');
+assert.match(source, /function cleanMaterialText/, 'server must clean sensitive text from PDF material payloads');
+assert.match(source, /materialEmailPattern/, 'server must remove email addresses from material text');
+assert.match(source, /materialMobilePattern/, 'server must remove mobile numbers from material text');
+assert.match(source, /history:.*materials/, 'chat prompt must include cleaned material context');
 
 const dateInRange = (value, start, end) => {
   const date = String(value || '');

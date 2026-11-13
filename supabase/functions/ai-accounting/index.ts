@@ -38,7 +38,7 @@ const accountingSchema = {
 };
 
 const systemPrompt = (today: string) => `你是酒店和机票运营台账助手。今天是 ${today}。把用户的中文自然语言转换成可审核的结构化记账草稿。只输出一个 JSON 对象，不要 Markdown，不要解释文字。严格遵守以下结构：${JSON.stringify(accountingSchema)}。
-  规则：不要臆造金额、日期、客户、供应商、房型或确认号；缺失且会影响入账的字段放入 missing_fields。“今天、明天、后天”按今天 ${today} 计算。酒店“住2晚”填 nights=2，房晚由系统按 rooms × nights 计算。客人在前台付款、平台之后返佣属于 commission，订单成本填 0；返佣平台、预计佣金、已收佣金、直接费用分别填入对应字段。收到、收款、返佣到账优先识别为 payment 或 commission，不要新建订单。客户已收款时将 customer_payment_status 和 payment_status 设为 paid；若未明确客户已收金额但已提供 gmv，将 received 设为 gmv。供应商或平台已付款时将 supplier_payment_status 设为 paid，并在未提供 supplier_paid 时用 cost；供应商或平台未付款时设为 unpaid。供应商或平台付款状态与客户收款状态必须分别填入各自字段，不要混用。付款状态不明确时不要默认已付款，放入 missing_fields。无法判断时 intent=unknown。所有数字必须是数字，无法确定时不要猜。`;
+  规则：不要臆造金额、日期、客户、供应商、房型或确认号；缺失且会影响入账的字段放入 missing_fields。“今天、明天、后天”按今天 ${today} 计算。酒店“住2晚”填 nights=2，房晚由系统按 rooms × nights 计算。客人在前台付款、平台之后返佣属于 commission，订单成本填 0；返佣平台、预计佣金、已收佣金、直接费用分别填入对应字段。收到、收款、返佣到账优先识别为 payment 或 commission，不要新建订单。客户已收款时将 customer_payment_status 和 payment_status 设为 paid；若未明确客户已收金额但已提供 gmv，将 received 设为 gmv。供应商或平台已付款时将 supplier_payment_status 设为 paid，并在未提供 supplier_paid 时用 cost；供应商或平台未付款时设为 unpaid。供应商或平台付款状态与客户收款状态必须分别填入各自字段，不要混用。付款状态不明确时不要默认已付款，放入 missing_fields。无法判断时 intent=unknown。所有数字必须是数字，无法确定时不要猜。若 user 内容中提供 materials，材料文字已经在浏览器和服务端屏蔽电话、邮箱，按材料中明确写出的字段读取；不要把被标记为 [已屏蔽] 的内容还原或猜测。普通代付订单不从材料读取销售价，返佣订单只读取明确标注人民币的客人实付金额。`;
 
 const analysisPrompt = `你是酒店运营分析说明助手。前端已经用确定性规则完成统计，下面只提供统计结果和口径。只根据 context 中的事实组织简洁中文回答，不要重新计算、补造数据、生成 SQL 或修改订单。必须说明统计范围、日期口径和关键金额；数据不足时直接说明“当前数据不足以判断”。只输出 JSON：{"answer":"中文回答","key_points":["要点"],"limitations":["必要时说明限制"]}。`;
 
@@ -53,8 +53,9 @@ const chatPrompt = (today: string) => `你是酒店运营与旅行知识工作�
 5. 新增、收款、返佣和记账操作只生成 draft_accounting；修改已有订单字段使用 draft_data_change。两类操作都不直接写订单或收入表。修改已有订单时，如果用户提供了唯一订单编号、确认号或客户线索，先从真实订单读取当前值，不要要求用户手工提供原值；只有匹配多笔或无法定位时才追问。
 6. 用户查询订单详情、未付款、待返佣、未开票、重复订单或其它收入时，必须调用对应的只读查询工具；不要用对话历史或综合统计代替明细查询。
 7. 没有实时天气、库存、价格、航班或签证工具时，必须明确说明当前没有对应实时查询能力。
-8. 最终只输出 JSON：{"answer":"中文回答","needs_clarification":false,"unsupported":false}。统计和专项查询回答必须引用工具返回的范围、日期口径和结果，不得自行重算或编造明细。
-9. 只有用户明确说“记住、以后默认、以后都按、这是我们的规则”等内容时，才可以调用 draft_memory；它只生成待确认草稿，必须等用户点击保存后才会进入长期记忆。普通聊天、订单事实和一次性筛选条件不要写入长期记忆。`;
+ 8. 最终只输出 JSON：{"answer":"中文回答","needs_clarification":false,"unsupported":false}。统计和专项查询回答必须引用工具返回的范围、日期口径和结果，不得自行重算或编造明细。
+  9. 只有用户明确说“记住、以后默认、以后都按、这是我们的规则”等内容时，才可以调用 draft_memory；它只生成待确认草稿，必须等用户点击保存后才会进入长期记忆。普通聊天、订单事实和一次性筛选条件不要写入长期记忆。
+  10. 如果 materials 非空，优先把材料作为本次问题的事实来源；只能读取材料明确出现的内容，读不到就留空或要求用户补充，不要用文件名猜酒店、日期、金额或订单号。`;
 
 const chatToolRoutingRule = `补充规则：用户要求修改、统一、替换、批量修改已有订单字段时，必须调用 draft_data_change，先查询并返回待确认预览；如果提供了唯一订单编号、确认号或客户线索，可以省略 from_value，由工具自动读取当前值；禁止调用 draft_accounting，也禁止直接写入数据库。用户确认后才允许服务端执行修改。酒店/航司名称归入 supplier，房型/航班归入 product，城市/航线归入 location。`;
 
@@ -323,6 +324,25 @@ const customerPaymentLabelMap: Record<string, string> = { paid: '\u5df2\u6536\u6
 
 function normalizedText(value: unknown) {
   return String(value || '').trim().toLocaleLowerCase();
+}
+
+const materialEmailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const materialMobilePattern = /(?:\+?86[\s-]?)?1[3-9]\d{9}/g;
+const materialLandlinePattern = /(?:\+?\d{1,3}[\s-]?)?0\d{2,3}[\s-]?\d{7,8}(?:[\s-]?(?:转|ext\.?)\s?\d{1,6})?/gi;
+const materialLabeledPhonePattern = /(?:电话|手机|手机号|联系电话|tel(?:ephone)?|mobile)\s*[:：]?\s*[+\d][\d\s().-]{6,}/gi;
+function cleanMaterialText(value: unknown) {
+  let text = String(value || ''), redactions = 0;
+  const redact = (pattern: RegExp) => { text = text.replace(pattern, () => { redactions += 1; return '[已屏蔽]'; }); };
+  redact(materialEmailPattern); redact(materialLabeledPhonePattern); redact(materialMobilePattern); redact(materialLandlinePattern);
+  return { text, redactions };
+}
+function materialContext(body: Record<string, unknown>) {
+  if (!Array.isArray(body.materials)) return [];
+  return body.materials.slice(0, 8).map((item: unknown) => {
+    const row = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+    const cleaned = cleanMaterialText(String(row.text || '').slice(0, 20000));
+    return { name: String(row.name || '订单材料').slice(0, 160), pages: Number(row.pages || 0), text: cleaned.text, redactions: cleaned.redactions };
+  }).filter(item => item.text.trim());
 }
 
 function isFailedOrder(order: Record<string, unknown>) {
@@ -865,6 +885,7 @@ Deno.serve(async (request) => {
     const body = await request.json();
     const mode = String(body?.mode || 'accounting');
     const text = String(body?.text || '').trim();
+    const materials = materialContext(body as Record<string, unknown>);
     if (mode === 'confirm_action' || mode === 'cancel_action') {
       const actionId = String(body?.action_id || '').trim();
       if (!actionId) return json({ error: '缺少待确认任务编号' }, 400);
@@ -907,7 +928,7 @@ Deno.serve(async (request) => {
       const memories = await loadAssistantMemories(userClient);
       const chatMessages: any[] = [
         { role: 'system', content: `${chatPrompt(today)}\n${chatToolRoutingRule}` },
-        { role: 'user', content: JSON.stringify({ question: text, context: body?.context_state || {}, conversation_summary: String(body?.conversation_summary || ''), confirmed_memories: memories, history: Array.isArray(body?.history) ? body.history.slice(-8) : [] }) },
+        { role: 'user', content: JSON.stringify({ question: text, context: body?.context_state || {}, conversation_summary: String(body?.conversation_summary || ''), confirmed_memories: memories, history: Array.isArray(body?.history) ? body.history.slice(-8) : [], materials }) },
       ];
       let analysis: Record<string, unknown> | null = null;
       let draft: Record<string, unknown> | null = null;
@@ -975,10 +996,10 @@ Deno.serve(async (request) => {
     const memory = { context: body?.context_state || {}, conversation_summary: String(body?.conversation_summary || ''), history: Array.isArray(body?.history) ? body.history.slice(-8) : [], knowledge, confirmed_memories: memories };
     const prompt = mode === 'analysis' ? analysisPrompt : mode === 'assistant' ? assistantPrompt : systemPrompt(today);
     const content = mode === 'analysis'
-      ? JSON.stringify({ question: text, context: body.context, memory })
+      ? JSON.stringify({ question: text, context: body.context, memory, materials })
       : mode === 'assistant'
-        ? JSON.stringify({ question: text, memory })
-        : JSON.stringify({ text, memory });
+        ? JSON.stringify({ question: text, memory, materials })
+        : JSON.stringify({ text, memory, materials });
     const result = await callModel(baseUrl, apiKey, { model, temperature, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: prompt }, { role: 'user', content }] });
     const modelContent = result?.choices?.[0]?.message?.content;
     if (typeof modelContent !== 'string') return json({ error: '模型没有返回可识别结果' }, 502);

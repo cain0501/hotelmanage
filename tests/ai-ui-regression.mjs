@@ -28,6 +28,17 @@ assert.match(source, /byId\('received'\)\.value=/, 'AI fill must apply customer 
 assert.match(source, /customer_payment_status/, 'AI fill must prefer explicit customer payment status');
 assert.match(source, /byId\('supplierPaymentStatus'\)\.value=/, 'AI fill must apply supplier payment status');
 assert.match(source, /supplierPaidValue>=supplierCost\?'paid':'partial'/, 'AI fill must infer supplier status from paid amount when the draft omits it');
+assert.match(source, /function cleanMaterialText\(value\)/, 'browser must clean sensitive text before sending PDF material');
+assert.match(source, /function extractPdfMaterial\(file\)/, 'browser must extract PDF text locally');
+assert.match(source, /vendor\/pdfjs\/pdf\.min\.mjs/, 'PDF.js must be self-hosted');
+const materialStart = source.indexOf('const materialEmailPattern');
+const materialEnd = source.indexOf('function renderAssistantMaterials', materialStart);
+assert.notEqual(materialStart, -1, 'material privacy helpers must exist');
+const materialHelpers = vm.runInNewContext(`${source.slice(materialStart, materialEnd)};({ cleanMaterialText })`);
+const cleanedMaterial = materialHelpers.cleanMaterialText('酒店电话 020-88888888，手机 13812345678，邮箱 test@example.com');
+assert.equal(cleanedMaterial.text.includes('020-88888888'), false, 'PDF text must remove landline numbers');
+assert.equal(cleanedMaterial.text.includes('13812345678'), false, 'PDF text must remove mobile numbers');
+assert.equal(cleanedMaterial.text.includes('test@example.com'), false, 'PDF text must remove email addresses');
 
 const start = source.indexOf('function clearAiDraftPreview');
 const end = source.indexOf('\nfunction fillFromAiDraft', start);
