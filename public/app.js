@@ -1221,7 +1221,7 @@ async function confirmCleanup(){
 function renderAll(){renderDashboard();renderOrders();renderLedger();renderQuality();renderOtherIncome();}
 
 let selectedOtherIncomeOrderIds=[];
-function orderSearchText(order){return `${orderCode(order)} ${order.id} ${order.confirmation||''} ${order.customer||''} ${order.booker||''} ${order.supplier||''} ${order.product||''} ${order.location||''}`.toLowerCase();}
+function orderSearchText(order){return `${orderCode(order)} ${order.id} ${order.confirmation||''} ${order.platformOrderNo||''} ${order.customer||''} ${order.booker||''} ${order.supplier||''} ${order.product||''} ${order.location||''}`.toLowerCase();}
 function renderOtherIncomeOrderPicker(){
   const query=(byId('otherIncomeOrderSearch')?.value||'').trim().toLowerCase();
   const matches=orders.filter(order=>!query||orderSearchText(order).includes(query)).slice(0,80);
