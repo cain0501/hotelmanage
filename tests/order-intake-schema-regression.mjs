@@ -16,6 +16,9 @@ for (const id of ['channel', 'platformOrderNo', 'guestNamesDifferent', 'guestNam
 }
 assert.match(source, /guestNamesDifferent.*checked\?byId\('guestNames'\)\.value\.trim\(\):customerName/, 'same customer and guest should reuse the customer field by default');
 assert.match(source, /function syncGuestNameFields\(\)/, 'different guest toggle must control the extra guest field');
+assert.match(html, /id="nights"[^>]*placeholder="按入住 \/ 离店日期自动计算"/, 'new hotel orders should explain that nights can be auto-calculated');
+assert.match(source, /function syncNightsFromDates\(\)/, 'hotel nights should be derived from stay dates when not manually entered');
+assert.match(source, /checkOutDate.*syncNightsFromDates/, 'changing the checkout date should recalculate automatic nights');
 for (const field of ['channel', 'platform_order_no', 'guest_names', 'guest_count', 'meal_plan', 'check_out_date', 'upstream_name', 'payment_deadline', 'cancel_policy', 'free_cancel_until']) {
   assert.match(source, new RegExp(field), `browser mapping must include ${field}`);
   assert.match(migration, new RegExp(`add column if not exists ${field}`), `migration must add ${field}`);

@@ -342,7 +342,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-          <small class="app-version">版本 20261113-78</small>
+          <small class="app-version">版本 20261113-79</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -639,7 +639,7 @@
           <label id="supplierLabel">酒店<input required id="supplier" placeholder="如：广州瑰丽" /></label>
           <label id="productLabel">房型<input id="product" placeholder="如：豪华大床" /></label>
           <label class="hotel-only">房间数<input id="rooms" type="number" min="1" value="1" /></label>
-          <label class="hotel-only">晚数<input id="nights" type="number" min="1" value="1" /></label>
+          <label class="hotel-only">晚数<input id="nights" type="number" min="1" placeholder="按入住 / 离店日期自动计算" /></label>
           <label class="flight-only hidden">票数<input id="tickets" type="number" min="1" value="1" /></label>
           <label>GMV / 售价<span class="amount-input"><input required id="gmv" type="number" min="0" step="0.01" placeholder="0.00" /><button type="button" class="calc-trigger" data-calc-for="gmv" aria-label="计算 GMV">⌗</button></span></label>
           <label id="costLabel">成本金额<span class="amount-input"><input required id="cost" type="number" min="0" step="0.01" placeholder="0.00" /><button type="button" class="calc-trigger" data-calc-for="cost" aria-label="计算成本">⌗</button></span></label>
@@ -758,9 +758,9 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
-    <script src="shared/domain.js?v=20261113-78"></script>
-    <script src="shared/calculator.js?v=20261113-78"></script>
-    <script src="app.js?v=20261113-78"></script>
-    <script>document.querySelector('.app-version').textContent='\u7248\u672c 20261113-78';</script>
+    <script src="shared/domain.js?v=20261113-79"></script>
+    <script src="shared/calculator.js?v=20261113-79"></script>
+    <script src="app.js?v=20261113-79"></script>
+    <script>document.querySelector('.app-version').textContent='\u7248\u672c 20261113-79';</script>
   </body>
 </html>
