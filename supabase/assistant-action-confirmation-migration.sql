@@ -53,10 +53,10 @@ begin
   from_value := trim(coalesce(action_row.preview ->> 'from_value', ''));
   to_value := coalesce(action_row.preview ->> 'to_value', '');
 
-  if target_field not in ('supplier', 'product', 'location', 'booker', 'customer', 'payment_platform', 'confirmation', 'status') then
+  if target_field not in ('channel', 'supplier', 'product', 'location', 'booker', 'customer', 'payment_platform', 'confirmation', 'status') then
     raise exception '不允许修改字段 %', target_field;
   end if;
-  if from_value = '' or to_value = '' then
+  if to_value = '' or (target_field <> 'channel' and from_value = '') then
     raise exception '待确认任务缺少原值或新值';
   end if;
 
@@ -72,7 +72,10 @@ begin
   from public.orders o
   where o.user_id = auth.uid()
     and o.id = any(affected_ids)
-    and lower(trim(coalesce(case target_field
+    and (
+      from_value = '__ANY__'
+      or lower(trim(coalesce(case target_field
+      when 'channel' then o.channel
       when 'supplier' then o.supplier
       when 'product' then o.product
       when 'location' then o.location
@@ -81,13 +84,16 @@ begin
       when 'payment_platform' then o.payment_platform
       when 'confirmation' then o.confirmation
       when 'status' then o.status
-    end, ''))) = lower(from_value);
+    end, ''))) = lower(from_value)
+    );
 
   if matched_count <> expected_count then
     raise exception using errcode = 'P0001', message = '订单在确认前已发生变化，请重新生成预览';
   end if;
 
-  if target_field = 'supplier' then
+  if target_field = 'channel' then
+    update public.orders set channel = to_value where user_id = auth.uid() and id = any(affected_ids);
+  elsif target_field = 'supplier' then
     update public.orders set supplier = to_value where user_id = auth.uid() and id = any(affected_ids);
   elsif target_field = 'product' then
     update public.orders set product = to_value where user_id = auth.uid() and id = any(affected_ids);

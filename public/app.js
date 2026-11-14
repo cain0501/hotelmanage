@@ -442,8 +442,8 @@ renderAiDraft=function(){
   const button=byId('aiFillButton');if(button){button.disabled=aiDraftMatch.status==='ambiguous';button.textContent=aiDraftMatch.status==='matched'?'更新已有订单':'\u586b\u5165\u5bf9\u5e94\u8868\u5355';}
 };
 const aiDraftIntents=new Set(['order','other_income','other_expense','payment','commission']);
-const aiChangeTargetFields={supplier:'supplier',product:'product',location:'location',booker:'booker',customer:'customer',payment_platform:'paymentPlatform',confirmation:'confirmation',status:'status'};
-const aiChangeTargetLabels={supplier:'酒店 / 航司',product:'房型 / 航班',location:'城市 / 航线',booker:'预订人',customer:'客户',payment_platform:'付款平台',confirmation:'确认号 / 票号',status:'订单状态'};
+const aiChangeTargetFields={channel:'channel',supplier:'supplier',product:'product',location:'location',booker:'booker',customer:'customer',payment_platform:'paymentPlatform',confirmation:'confirmation',status:'status'};
+const aiChangeTargetLabels={channel:'订单渠道',supplier:'酒店 / 航司',product:'房型 / 航班',location:'城市 / 航线',booker:'预订人',customer:'客户',payment_platform:'付款平台',confirmation:'确认号 / 票号',status:'订单状态'};
 const aiChangeValue=action=>String(action?.from_value??action?.fromValue??'').trim();
 const aiChangeNextValue=action=>String(action?.to_value??action?.toValue??'').trim();
 function renderPendingActionPreview(action){

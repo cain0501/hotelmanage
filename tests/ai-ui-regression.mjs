@@ -6,6 +6,8 @@ import vm from 'node:vm';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const source = await readFile(resolve(root, 'public/app.js'), 'utf8');
+assert.match(source, /aiChangeTargetFields=\{channel:'channel'/, 'AI change targets must expose order channel');
+assert.match(source, /aiChangeTargetLabels=\{channel:'订单渠道'/, 'AI change labels must expose order channel');
 const helperStart = source.indexOf('function aiValue');
 const helperEnd = source.indexOf('function renderAiDraft', helperStart);
 assert.notEqual(helperStart, -1, 'AI draft normalization helpers must exist');

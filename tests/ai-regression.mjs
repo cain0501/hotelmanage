@@ -12,6 +12,14 @@ assert.match(source, /date_field === 'service_date' \? 'service_date' : 'order_d
 assert.match(source, /\['cancelled', 'refunded'\]/, 'failed orders must be excluded by default');
 assert.match(source, /includeFailed/, 'queries must have an explicit include-failed override');
 assert.match(source, /draft_data_change/, 'existing-order changes must use a preview tool');
+assert.match(source, /target: \{ type: 'string', enum: \['channel'/, 'batch change tool must support channel');
+assert.match(source, /normalizeChannelValue/, 'channel labels must normalize to enum values');
+assert.match(source, /const batchAll = target === 'channel'/, 'channel batches must support replacing all matched current values');
+assert.match(source, /text\.toLowerCase\(\) !== 'all'/, 'channel batches must not treat an all-type default as a scope');
+assert.match(source, /from_value: batchAll \? '__ANY__'/, 'channel batch preview must use a wildcard source value');
+const confirmationSource = await readFile(resolve(root, 'supabase/assistant-action-confirmation-migration.sql'), 'utf8');
+assert.match(confirmationSource, /'channel'/, 'confirmation flow must allow channel');
+assert.match(confirmationSource, /from_value = '__ANY__'/, 'confirmation flow must allow wildcard channel batches');
 assert.match(source, /pending_action/, 'high-risk changes must persist a pending action');
 assert.match(source, /confirm_action/, 'high-risk changes must require confirmation');
 assert.match(source, /profile\.account_status !== 'approved'/, 'AI must reject unapproved accounts');

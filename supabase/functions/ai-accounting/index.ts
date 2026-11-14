@@ -62,6 +62,8 @@ const chatToolRoutingRule = `补充规则：用户要求修改、统一、替换
 
 const materialMatchRoutingRule = '\nWhen materials are present and the user asks to match, sync, or associate the material with an existing order, call draft_accounting first to extract the material fields, then call get_order_detail using the strongest identifier. Do not claim the order is fully matched when only a confirmation number matches and the platform order number is missing or different. The frontend will show a comparison draft and ask the user which fields to update.';
 
+const channelRoutingRule = `When the user asks to change order channel, use target channel. Map 预订部/销售/同行 to booking_desk, 旅行社订单 to travel_agency, OTA to ota, and 房卡房 to room_card. For a clear batch request, call draft_data_change directly and return a confirmation preview. Do not call get_order_detail first, do not ask for a date range unless the user supplied one, and do not expose internal field names as a blocker.`;
+
 const chatTools = [
   {
     type: 'function',
@@ -74,7 +76,7 @@ const chatTools = [
         required: ['action_type', 'target', 'to_value', 'filters', 'search_text'],
         properties: {
           action_type: { type: 'string', enum: ['batch_replace'] },
-          target: { type: 'string', enum: ['supplier', 'product', 'location', 'booker', 'customer', 'payment_platform', 'confirmation', 'status'] },
+          target: { type: 'string', enum: ['channel', 'supplier', 'product', 'location', 'booker', 'customer', 'payment_platform', 'confirmation', 'status'] },
           from_value: { type: 'string' },
           to_value: { type: 'string', description: '目标值；订单状态请使用 booked、confirming、confirmed、cancelled、pending、ticketed 或 refunded，也可以直接使用中文状态名称' },
           filters: {
@@ -691,20 +693,32 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
     const target = String(args.target || '');
     const statusLabels: Record<string, string> = { booked: '预订中', confirming: '确认中', confirmed: '已确认', cancelled: '已取消', pending: '待出票', ticketed: '已出票', refunded: '已退票', '预订中': '预订中', '确认中': '确认中', '已确认': '已确认', '已取消': '已取消', '待出票': '待出票', '已出票': '已出票', '已退票': '已退票', '已退款': '已退票' };
     const statusValues: Record<string, string> = { booked: 'booked', confirming: 'confirming', confirmed: 'confirmed', cancelled: 'cancelled', pending: 'pending', ticketed: 'ticketed', refunded: 'refunded', '预订中': 'booked', '确认中': 'confirming', '已确认': 'confirmed', '已取消': 'cancelled', '待出票': 'pending', '已出票': 'ticketed', '已退票': 'refunded', '已退款': 'refunded' };
-    const normalizeChangeValue = (value: unknown) => target === 'status' ? (statusValues[String(value || '').trim()] || String(value || '').trim()) : String(value || '').trim();
+    const channelValues: Record<string, string> = { '预订部/销售/同行': 'booking_desk', '预订部 / 销售 / 同行': 'booking_desk', booking_desk: 'booking_desk', '旅行社订单': 'travel_agency', travel_agency: 'travel_agency', OTA: 'ota', ota: 'ota', '房卡房': 'room_card', room_card: 'room_card' };
+    const normalizeChannelValue = (value: string) => channelValues[value.trim()] || value.trim();
+    const normalizeChangeValue = (value: unknown) => {
+      const text = String(value || '').trim();
+      if (target === 'status') return statusValues[text] || text;
+      return target === 'channel' ? normalizeChannelValue(text) : text;
+    };
     let fromValue = normalizeChangeValue(args.from_value);
     const requestedToValue = String(args.to_value || '').trim();
     const toValue = normalizeChangeValue(requestedToValue);
     const searchText = String(args.search_text || '').trim();
     const filters = (args.filters && typeof args.filters === 'object' ? args.filters : {}) as Record<string, unknown>;
-    const allowedTargets = new Set(['supplier', 'product', 'location', 'booker', 'customer', 'payment_platform', 'confirmation', 'status']);
+    const normalizedToValue = target === 'channel' ? normalizeChannelValue(toValue) : toValue;
+    const allowedTargets = new Set(['channel', 'supplier', 'product', 'location', 'booker', 'customer', 'payment_platform', 'confirmation', 'status']);
     if (!allowedTargets.has(target)) throw new Error('批量修改字段不受支持');
     if (!toValue) throw new Error('修改必须提供新值');
-    if (!fromValue && !searchText) throw new Error('请提供订单编号、确认号或原始值');
+    const hasBatchScope = Boolean(searchText || Object.values(filters).some((value) => {
+      const text = String(value || '').trim();
+      return text && text.toLowerCase() !== 'all';
+    }));
+    const batchAll = target === 'channel' && !fromValue && hasBatchScope;
+    if (!fromValue && !hasBatchScope) throw new Error('请提供订单范围，例如酒店名称、订单号或确认号');
 
     const { data, error } = await client
       .from('orders')
-      .select('id,order_code,type,customer,booker,location,supplier,product,confirmation,payment_platform,status,order_date,service_date')
+      .select('id,order_code,type,customer,booker,location,supplier,product,confirmation,payment_platform,channel,status,order_date,service_date')
       .limit(10000);
     if (error) throw error;
     const normalized = (value: unknown) => String(value || '').trim().toLocaleLowerCase();
@@ -720,30 +734,34 @@ async function executeChatTool(toolName: string, args: Record<string, unknown>, 
       if (!inDateRange(order.order_date, 'order_date_start', 'order_date_end')) return false;
       if (!inDateRange(order.service_date, 'service_date_start', 'service_date_end')) return false;
       if (searchText) {
-        const haystack = `${order.order_code || ''} ${order.id || ''} ${order.confirmation || ''} ${order.customer || ''} ${order.booker || ''} ${order.location || ''} ${order.supplier || ''} ${order.product || ''}`.toLocaleLowerCase();
+        const haystack = `${order.order_code || ''} ${order.id || ''} ${order.confirmation || ''} ${order.customer || ''} ${order.booker || ''} ${order.location || ''} ${order.supplier || ''} ${order.product || ''} ${order.channel || ''}`.toLocaleLowerCase();
         if (!haystack.includes(searchText.toLocaleLowerCase())) return false;
       }
       return true;
     });
-    if (!fromValue) {
+    if (!fromValue && !batchAll) {
       if (candidateMatches.length === 0) throw new Error(`没有找到与“${searchText}”匹配的订单`);
       if (candidateMatches.length > 1) throw new Error(`“${searchText}”匹配到 ${candidateMatches.length} 笔订单，请补充订单编号或确认号`);
       fromValue = String(candidateMatches[0][target] || '').trim();
     }
-    const matches = candidateMatches.filter((order: Record<string, unknown>) => normalized(order[target]) === normalized(fromValue));
+    const normalizedFromValue = target === 'channel' ? normalizeChannelValue(fromValue) : fromValue;
+    const matches = batchAll
+      ? candidateMatches
+      : candidateMatches.filter((order: Record<string, unknown>) => normalized(order[target]) === normalized(normalizedFromValue));
     const targetLabels: Record<string, string> = {
       supplier: '酒店 / 航司', product: '房型 / 航班', location: '城市 / 航线', booker: '预订人',
       customer: '客户', payment_platform: '付款平台', confirmation: '确认号 / 票号', status: '订单状态',
     };
+    if (target === 'channel') targetLabels.channel = '订单渠道';
     return {
       pending_action: {
         action_type: 'batch_replace',
         target,
         target_label: targetLabels[target] || target,
-        from_value: fromValue,
-        from_value_label: target === 'status' ? (statusLabels[fromValue] || fromValue) : fromValue,
-        to_value: toValue,
-        to_value_label: target === 'status' ? (statusLabels[toValue] || requestedToValue || toValue) : toValue,
+        from_value: batchAll ? '__ANY__' : fromValue,
+        from_value_label: batchAll ? '符合筛选条件的当前值' : target === 'status' ? (statusLabels[fromValue] || fromValue) : fromValue,
+        to_value: normalizedToValue,
+        to_value_label: target === 'channel' ? (requestedToValue || normalizedToValue) : target === 'status' ? (statusLabels[normalizedToValue] || requestedToValue || normalizedToValue) : normalizedToValue,
         filters,
         search_text: searchText,
         matched_count: matches.length,
@@ -952,7 +970,7 @@ Deno.serve(async (request) => {
     if (mode === 'chat') {
       const memories = await loadAssistantMemories(userClient);
       const chatMessages: any[] = [
-        { role: 'system', content: `${chatPrompt(today)}\n${chatToolRoutingRule}${materialMatchRoutingRule}` },
+        { role: 'system', content: `${chatPrompt(today)}\n${chatToolRoutingRule}${materialMatchRoutingRule}\n${channelRoutingRule}` },
         { role: 'user', content: JSON.stringify({ question: text, context: body?.context_state || {}, conversation_summary: String(body?.conversation_summary || ''), confirmed_memories: memories, history: Array.isArray(body?.history) ? body.history.slice(-8) : [], materials }) },
       ];
       let analysis: Record<string, unknown> | null = null;
