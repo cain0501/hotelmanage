@@ -6,8 +6,12 @@ import vm from 'node:vm';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const source = await readFile(resolve(root, 'public/app.js'), 'utf8');
+const indexSource = await readFile(resolve(root, 'public/index.html'), 'utf8');
 assert.match(source, /aiChangeTargetFields=\{channel:'channel'/, 'AI change targets must expose order channel');
 assert.match(source, /aiChangeTargetLabels=\{channel:'订单渠道'/, 'AI change labels must expose order channel');
+assert.doesNotMatch(indexSource, /id="upstreamName"/, 'upstream input should be removed from the order form');
+assert.doesNotMatch(source, /byId\('upstreamName'\)/, 'removed upstream input must not be accessed by the form code');
+assert.match(source, /upstreamName:existing\?\.upstreamName\|\|''/, 'editing an old order must preserve its upstream value');
 const helperStart = source.indexOf('function aiValue');
 const helperEnd = source.indexOf('function renderAiDraft', helperStart);
 assert.notEqual(helperStart, -1, 'AI draft normalization helpers must exist');

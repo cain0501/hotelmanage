@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261114-86" />
+    <link rel="stylesheet" href="styles.css?v=20261114-87" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -342,7 +342,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-          <small class="app-version">版本 20261114-86</small>
+          <small class="app-version">版本 20261114-87</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -633,7 +633,6 @@
           <label>入住人数<input id="guestCount" type="number" min="0" step="1" placeholder="选填" /></label>
           <label>餐型<input id="mealPlan" placeholder="如：含早餐 / 无早" /></label>
           <label class="hotel-only">离店日期<input id="checkOutDate" type="date" /></label>
-          <label>预订上游 / 同行<input id="upstreamName" placeholder="预订部、同行或房卡提供方" /></label>
           <label>付款截止<input id="paymentDeadline" type="datetime-local" /></label>
           <label>取消政策<select id="cancelPolicy"><option value="unknown">未知</option><option value="refundable">可取消</option><option value="non_refundable">不可取消</option></select></label>
           <label>免费取消截止<input id="freeCancelUntil" type="datetime-local" /></label>
@@ -760,8 +759,8 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
-    <script src="shared/domain.js?v=20261114-86"></script>
-    <script src="shared/calculator.js?v=20261114-86"></script>
-    <script src="app.js?v=20261114-86"></script>
+    <script src="shared/domain.js?v=20261114-87"></script>
+    <script src="shared/calculator.js?v=20261114-87"></script>
+    <script src="app.js?v=20261114-87"></script>
   </body>
 </html>
