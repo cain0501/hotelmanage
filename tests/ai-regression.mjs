@@ -49,6 +49,9 @@ assert.match(source, /materialMobilePattern/, 'server must remove mobile numbers
 assert.match(source, /history:.*materials/, 'chat prompt must include cleaned material context');
 assert.match(source, /accountingFieldRoutingRule/, 'accounting drafts must route explicitly labelled fields');
 assert.match(source, /normalizeAccountingDraftFromText/, 'accounting drafts must be corrected from labelled user text');
+assert.match(source, /order\.meal_plan = '无早'/, 'meal plan should be inferred from a no-breakfast room label');
+assert.match(source, /order\.cancel_policy = \/不可取消/, 'cancellation policy should normalize from Chinese labels');
+assert.match(source, /order\.customer_payment_status = 'unknown'/, 'missing customer payment status must not default to paid');
 
 const dateInRange = (value, start, end) => {
   const date = String(value || '');

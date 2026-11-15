@@ -394,10 +394,14 @@ function normalizeAccountingDraftFromText(draft: Record<string, unknown>, source
   if (orderDate) order.order_date = normalizedDateValue(orderDate) || order.order_date;
   const serviceDate = labeledValue(sourceText, ['入住日期', '入住 / 出发日期', '入离日期', '出发日期']);
   if (serviceDate) order.service_date = normalizedDateValue(serviceDate) || order.service_date;
+  const customer = labeledValue(sourceText, ['客户']);
+  const guestNames = labeledValue(sourceText, ['入住人', '乘机人']);
+  const booker = labeledValue(sourceText, ['预定人', '预订人']);
+  order.customer = customer;
+  order.guest_names = guestNames;
+  order.booker = booker;
   setText('supplier', ['酒店名称', '酒店']);
   setText('product', ['房型', '房间类型']);
-  setText('guest_names', ['入住人', '乘机人']);
-  setText('booker', ['预定人', '预订人']);
   setText('confirmation', ['确认号', '酒店确认号']);
   setText('payment_platform', ['预定平台', '预订平台', '付款平台', '支付平台']);
   setText('supplier_payment_status', ['供应商 / 平台付款状态', '供应商/平台付款状态', '平台付款状态']);
@@ -406,8 +410,25 @@ function normalizeAccountingDraftFromText(draft: Record<string, unknown>, source
   setText('customer_payment_status', ['客户收款状态', '客户付款状态']);
   setText('status', ['订单状态']);
   setText('invoice_status', ['是否开票', '开票状态']);
+  setText('cancel_policy', ['取消政策']);
+  setText('meal_plan', ['餐型', '早餐']);
+  setText('channel', ['订单渠道', '渠道']);
   setAmount('cost', ['成本', '成本金额']);
   setAmount('gmv', ['售价', '销售价', 'GMV']);
+  if (!order.meal_plan && /无早|不含早|无早餐/.test(String(order.product || ''))) order.meal_plan = '无早';
+  if (order.channel) {
+    const channel = String(order.channel).trim();
+    if (/预订部|预定部|销售|同行/.test(channel)) order.channel = 'booking_desk';
+    else if (/旅行社/.test(channel)) order.channel = 'travel_agency';
+    else if (/OTA/i.test(channel)) order.channel = 'ota';
+    else if (/房卡房/.test(channel)) order.channel = 'room_card';
+  }
+  if (!labeledValue(sourceText, ['客户收款状态', '客户付款状态'])) {
+    order.customer_payment_status = 'unknown';
+    order.payment_status = 'unknown';
+    order.received = undefined;
+    order.customer_received = undefined;
+  }
   if (order.supplier_payment_status) {
     const status = String(order.supplier_payment_status);
     if (/已付款|已支付|paid/i.test(status)) order.supplier_payment_status = 'paid';
@@ -424,6 +445,10 @@ function normalizeAccountingDraftFromText(draft: Record<string, unknown>, source
     const status = String(order.status);
     const statusMap: Record<string, string> = { '预订中': 'booked', '确认中': 'confirming', '已确认': 'confirmed', '已取消': 'cancelled', '待出票': 'pending', '已出票': 'ticketed', '已退票': 'refunded', '已退款': 'refunded' };
     order.status = statusMap[status] || status;
+  }
+  if (order.cancel_policy) {
+    const policy = String(order.cancel_policy);
+    order.cancel_policy = /不可取消|不可退|non_refundable/i.test(policy) ? 'non_refundable' : /可取消|可退|refundable/i.test(policy) ? 'refundable' : 'unknown';
   }
   if (order.invoice_status) {
     const invoice = String(order.invoice_status);

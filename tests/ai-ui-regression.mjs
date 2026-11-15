@@ -29,6 +29,8 @@ assert.equal(helpers.aiPaymentStatus('部分收款'), 'partial');
 assert.equal(helpers.aiPaymentStatus(''), 'unknown');
 assert.equal(helpers.aiOrderStatus('已确认'), 'confirmed');
 assert.equal(helpers.aiInvoiceStatus('未开票'), 'unissued');
+assert.match(source, /byId\('customer'\)\.value=customer\|\|guest/, 'guest-only orders should reuse guest as customer');
+assert.match(source, /guestNamesDifferent'\)\.checked=Boolean\(customer&&guest&&customer!==guest\)/, 'same customer and guest should not be marked different');
 const existingOrders = [
   { id: 'order-platform', orderCode: 'ORD-001', type: 'hotel', platformOrderNo: 'S228007514940', confirmation: 'C-001', supplier: '厦门W酒店', serviceDate: '2026-11-10', guestNames: '谭作明', location: '厦门', upstreamName: '道旅' },
   { id: 'order-extension', orderCode: 'ORD-002', type: 'hotel', platformOrderNo: '', confirmation: 'C-001', supplier: '厦门W酒店', serviceDate: '2026-11-11', guestNames: '谭作明', location: '厦门' },

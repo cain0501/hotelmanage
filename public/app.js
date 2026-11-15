@@ -547,9 +547,9 @@ fillFromAiDraft=function(){
   const data=aiDraft?.data||aiDraft||{},order=data.order||{};
   if(data.intent!=='order')return;
   const customer=aiValue(order.customer),guest=aiValue(order.guest_names||order.guestNames);
-  byId('customer').value=customer;
+  byId('customer').value=customer||guest;
   byId('guestNames').value=guest;
-  byId('guestNamesDifferent').checked=Boolean(guest);
+  byId('guestNamesDifferent').checked=Boolean(customer&&guest&&customer!==guest);
   byId('orderStatus').value=aiOrderStatus(order.status);
   byId('invoiceStatus').value=aiInvoiceStatus(order.invoice_status);
   syncGuestNameFields();
