@@ -351,6 +351,87 @@ function normalizeMaterialDraft(draft: Record<string, unknown>, hasMaterials: bo
   return { ...draft, order };
 }
 
+const accountingFieldRoutingRule = `Explicit field routing: 预订人/预定人 maps only to order.booker; 入住人/乘机人 maps only to order.guest_names; 客户 maps to order.customer; 预订平台/付款平台 maps to order.payment_platform; 供应商 \/ 平台付款状态 maps to order.supplier_payment_status; 客户收款状态 maps to order.customer_payment_status; 酒店名称 maps to order.supplier; 房型 maps to order.product; 确认号 maps to order.confirmation; 订单状态 maps to order.status; 是否开票 maps to order.invoice_status. Generic 平台：已付款 means supplier_payment_status unless it is explicitly labelled as customer payment. Never put a platform name or payment status into booker. Do not invent values for labels that are absent.`;
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function labeledValue(text: string, labels: string[]) {
+  for (const line of text.split(/\r?\n/)) {
+    const cleaned = line.replace(/^\s*\*+|\*+\s*$/g, '').trim();
+    for (const label of labels) {
+      const match = cleaned.match(new RegExp(`^${escapeRegex(label)}\\s*[:：]\\s*(.+)$`, 'i'));
+      if (match?.[1]) return match[1].replace(/\*+$/g, '').trim();
+    }
+  }
+  return '';
+}
+
+function normalizedDateValue(value: string) {
+  const match = value.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  return match ? `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}` : '';
+}
+
+function normalizedAmountValue(value: string) {
+  const match = value.replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : undefined;
+}
+
+function normalizeAccountingDraftFromText(draft: Record<string, unknown>, sourceText: string) {
+  if (!draft || typeof draft.order !== 'object' || !draft.order || !sourceText.trim()) return draft;
+  const order = { ...(draft.order as Record<string, unknown>) };
+  const setText = (key: string, labels: string[]) => {
+    const value = labeledValue(sourceText, labels);
+    if (value) order[key] = value;
+  };
+  const setAmount = (key: string, labels: string[]) => {
+    const value = labeledValue(sourceText, labels);
+    const amount = value ? normalizedAmountValue(value) : undefined;
+    if (amount !== undefined) order[key] = amount;
+  };
+  const orderDate = labeledValue(sourceText, ['下单日期', '预定日期', '预订日期']);
+  if (orderDate) order.order_date = normalizedDateValue(orderDate) || order.order_date;
+  const serviceDate = labeledValue(sourceText, ['入住日期', '入住 / 出发日期', '入离日期', '出发日期']);
+  if (serviceDate) order.service_date = normalizedDateValue(serviceDate) || order.service_date;
+  setText('supplier', ['酒店名称', '酒店']);
+  setText('product', ['房型', '房间类型']);
+  setText('guest_names', ['入住人', '乘机人']);
+  setText('booker', ['预定人', '预订人']);
+  setText('confirmation', ['确认号', '酒店确认号']);
+  setText('payment_platform', ['预定平台', '预订平台', '付款平台', '支付平台']);
+  setText('supplier_payment_status', ['供应商 / 平台付款状态', '供应商/平台付款状态', '平台付款状态']);
+  const genericPlatformStatus = labeledValue(sourceText, ['平台']);
+  if (genericPlatformStatus && !labeledValue(sourceText, ['供应商 / 平台付款状态', '供应商/平台付款状态', '平台付款状态'])) order.supplier_payment_status = genericPlatformStatus;
+  setText('customer_payment_status', ['客户收款状态', '客户付款状态']);
+  setText('status', ['订单状态']);
+  setText('invoice_status', ['是否开票', '开票状态']);
+  setAmount('cost', ['成本', '成本金额']);
+  setAmount('gmv', ['售价', '销售价', 'GMV']);
+  if (order.supplier_payment_status) {
+    const status = String(order.supplier_payment_status);
+    if (/已付款|已支付|paid/i.test(status)) order.supplier_payment_status = 'paid';
+    else if (/未付款|未支付|unpaid/i.test(status)) order.supplier_payment_status = 'unpaid';
+    else if (/部分付款|部分支付|partial/i.test(status)) order.supplier_payment_status = 'partial';
+  }
+  if (order.customer_payment_status) {
+    const status = String(order.customer_payment_status);
+    if (/已收款|已付款|已支付|paid/i.test(status)) order.customer_payment_status = 'paid';
+    else if (/未收款|未付款|未支付|unpaid/i.test(status)) order.customer_payment_status = 'unpaid';
+    else if (/部分收款|部分付款|部分支付|partial/i.test(status)) order.customer_payment_status = 'partial';
+  }
+  if (order.status) {
+    const status = String(order.status);
+    const statusMap: Record<string, string> = { '预订中': 'booked', '确认中': 'confirming', '已确认': 'confirmed', '已取消': 'cancelled', '待出票': 'pending', '已出票': 'ticketed', '已退票': 'refunded', '已退款': 'refunded' };
+    order.status = statusMap[status] || status;
+  }
+  if (order.invoice_status) {
+    const invoice = String(order.invoice_status);
+    order.invoice_status = /无发票|不开发票|no_invoice/i.test(invoice) ? 'no_invoice' : /已开票|issued/i.test(invoice) ? 'issued' : 'unissued';
+  }
+  return { ...draft, order };
+}
+
 const materialEmailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const materialMobilePattern = /(?:\+?86[\s-]?)?1[3-9]\d{9}/g;
 const materialLandlinePattern = /(?:\+?\d{1,3}[\s-]?)?0\d{2,3}[\s-]?\d{7,8}(?:[\s-]?(?:转|ext\.?)\s?\d{1,6})?/gi;
@@ -1037,7 +1118,7 @@ Deno.serve(async (request) => {
       memories = await loadAssistantMemories(userClient);
     }
     const memory = { context: body?.context_state || {}, conversation_summary: String(body?.conversation_summary || ''), history: Array.isArray(body?.history) ? body.history.slice(-8) : [], knowledge, confirmed_memories: memories };
-    const prompt = mode === 'analysis' ? analysisPrompt : mode === 'assistant' ? assistantPrompt : systemPrompt(today);
+    const prompt = mode === 'analysis' ? analysisPrompt : mode === 'assistant' ? assistantPrompt : `${systemPrompt(today)}\n${accountingFieldRoutingRule}`;
     const content = mode === 'analysis'
       ? JSON.stringify({ question: text, context: body.context, memory, materials })
       : mode === 'assistant'
@@ -1046,7 +1127,9 @@ Deno.serve(async (request) => {
     const result = await callModel(baseUrl, apiKey, { model, temperature, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: prompt }, { role: 'user', content }] });
     const modelContent = result?.choices?.[0]?.message?.content;
     if (typeof modelContent !== 'string') return json({ error: '模型没有返回可识别结果' }, 502);
-    return json({ data: normalizeMaterialDraft(parseModelJson(modelContent), materials.length > 0), model, mode, materials_used: materials.length });
+    const parsedDraft = normalizeMaterialDraft(parseModelJson(modelContent), materials.length > 0);
+    const normalizedDraft = mode === 'accounting' ? normalizeAccountingDraftFromText(parsedDraft, text) : parsedDraft;
+    return json({ data: normalizedDraft, model, mode, materials_used: materials.length });
   } catch (error) {
     await updateAssistantRun(adminClient, runId, { status: 'failed', current_step: 'failed', error_message: error instanceof Error ? error.message : 'unknown error', completed_at: new Date().toISOString() });
     return json({ error: error instanceof Error ? error.message : 'AI 处理失败' }, 500);

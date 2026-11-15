@@ -365,6 +365,18 @@ function aiPaymentStatus(value,fallback='unknown'){
   const map={paid:'paid','已付款':'paid','已支付':'paid','已收款':'paid','已收到':'paid',unpaid:'unpaid','未付款':'unpaid','未支付':'unpaid','未收款':'unpaid',partial:'partial','部分付款':'partial','部分支付':'partial','部分收款':'partial',refunded:'refunded','已退款':'refunded',unknown:'unknown','待核对':'unknown','待确认':'unknown',not_applicable:'not_applicable','不适用':'not_applicable',not_required:'not_required','无需付款':'not_required'};
   return map[raw]||fallback;
 }
+function aiOrderStatus(value,fallback='booked'){
+  const raw=aiValue(value).trim();
+  const map={booked:'booked',confirming:'confirming',confirmed:'confirmed',cancelled:'cancelled',pending:'pending',ticketed:'ticketed',refunded:'refunded','\u9884\u8ba2\u4e2d':'booked','\u786e\u8ba4\u4e2d':'confirming','\u5df2\u786e\u8ba4':'confirmed','\u5df2\u53d6\u6d88':'cancelled','\u5f85\u51fa\u7968':'pending','\u5df2\u51fa\u7968':'ticketed','\u5df2\u9000\u7968':'refunded','\u5df2\u9000\u6b3e':'refunded'};
+  return map[raw]||fallback;
+}
+function aiInvoiceStatus(value,fallback='unissued'){
+  const raw=aiValue(value).trim();
+  if(/\u65e0\u53d1\u7968|\u4e0d\u5f00\u53d1\u7968|no_invoice/i.test(raw))return 'no_invoice';
+  if(/\u5df2\u5f00\u7968|issued/i.test(raw))return 'issued';
+  if(/\u672a\u5f00\u7968|unissued/i.test(raw))return 'unissued';
+  return fallback;
+}
 const escapeHtml=value=>aiValue(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 function aiSettlementMode(order){
   const explicit=aiValue(order?.settlement_mode).trim();
@@ -528,6 +540,19 @@ fillFromAiDraft=function(){
   const data=aiDraft?.data||aiDraft||{},isMaterialOrder=data.intent==='order'&&assistantMaterialPayload().length>0;
   if(isMaterialOrder&&aiDraftMatch.status==='matched'&&aiDraftMatch.order){fillMatchedMaterialDraft(aiDraftMatch.order,data.order||{});return;}
   fillFromAiDraftWithMatch();
+};
+const fillFromAiDraftWithExplicitLabels=fillFromAiDraft;
+fillFromAiDraft=function(){
+  fillFromAiDraftWithExplicitLabels();
+  const data=aiDraft?.data||aiDraft||{},order=data.order||{};
+  if(data.intent!=='order')return;
+  const customer=aiValue(order.customer),guest=aiValue(order.guest_names||order.guestNames);
+  byId('customer').value=customer;
+  byId('guestNames').value=guest;
+  byId('guestNamesDifferent').checked=Boolean(guest);
+  byId('orderStatus').value=aiOrderStatus(order.status);
+  byId('invoiceStatus').value=aiInvoiceStatus(order.invoice_status);
+  syncGuestNameFields();
 };
  let currentProfile = null;
 let currentFeatures = new Set();

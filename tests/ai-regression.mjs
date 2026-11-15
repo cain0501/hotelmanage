@@ -47,6 +47,8 @@ assert.match(source, /function cleanMaterialText/, 'server must clean sensitive 
 assert.match(source, /materialEmailPattern/, 'server must remove email addresses from material text');
 assert.match(source, /materialMobilePattern/, 'server must remove mobile numbers from material text');
 assert.match(source, /history:.*materials/, 'chat prompt must include cleaned material context');
+assert.match(source, /accountingFieldRoutingRule/, 'accounting drafts must route explicitly labelled fields');
+assert.match(source, /normalizeAccountingDraftFromText/, 'accounting drafts must be corrected from labelled user text');
 
 const dateInRange = (value, start, end) => {
   const date = String(value || '');

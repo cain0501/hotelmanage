@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+SC:wght@500;600;700;900&family=Source+Han+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261114-87" />
+    <link rel="stylesheet" href="styles.css?v=20261115-88" />
     <style>
       #orderTable tr.unpaid-order td { background: #fff0ed; border-top-color: #f3cbc2; }
       #orderTable tr.unpaid-order:hover td { background: #ffe3dd; }
@@ -342,7 +342,7 @@
           <p>本地原型</p>
           <small id="cloudStatus">云端同步准备中</small>
           <small id="currentUserEmail"></small>
-          <small class="app-version">版本 20261114-87</small>
+          <small class="app-version">版本 20261115-88</small>
           <button class="text-button sidebar-action" id="migrateLocalData" type="button">上传本地数据</button>
           <button class="text-button sidebar-action" id="signOut" type="button">退出登录</button>
         </div>
@@ -652,7 +652,7 @@
           <label id="commissionStatusLabel" class="settlement-detail hidden">佣金状态<select id="commissionStatus"><option value="pending">待返佣</option><option value="partial">部分返佣</option><option value="received">已返佣</option><option value="none">无佣金</option></select></label>
           <label id="commissionReceivedDateLabel" class="settlement-detail hidden">佣金到账日期<input id="commissionReceivedDate" type="date" /></label>
           <label id="directCostLabel" class="settlement-detail hidden">直接费用<span class="amount-input"><input id="directCost" type="number" min="0" step="0.01" placeholder="如：支付手续费" /><button type="button" class="calc-trigger" data-calc-for="directCost" aria-label="计算直接费用">⌗</button></span></label>
-          <label id="paymentStatusLabel">客户收款状态<select id="paymentStatus"><option value="paid">已收款</option><option value="unpaid">未收款</option><option value="partial">部分收款</option><option value="refunded">已退款</option><option value="not_applicable">不适用</option></select></label>
+          <label id="paymentStatusLabel">客户收款状态<select id="paymentStatus"><option value="paid">已收款</option><option value="unpaid">未收款</option><option value="partial">部分收款</option><option value="refunded">已退款</option><option value="not_applicable">不适用</option><option value="unknown">待核对</option></select></label>
           <label id="receivedLabel">客户已收金额<span class="amount-input"><input required id="received" type="number" min="0" step="0.01" placeholder="0.00" /><button type="button" class="calc-trigger" data-calc-for="received" aria-label="计算客户已收金额">⌗</button></span></label>
           <label id="supplierPaymentStatusLabel">供应商 / 平台付款状态<select id="supplierPaymentStatus"><option value="unknown">待核对</option><option value="unpaid">未付款</option><option value="partial">部分付款</option><option value="paid">已付款</option><option value="not_required">无需付款</option></select></label>
           <label id="paymentPlatformLabel">供应商 / 平台付款方式<input id="paymentPlatform" list="paymentPlatformOptions" placeholder="如：携程 / 飞猪 / 供应商直付" /></label>
@@ -759,8 +759,8 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
-    <script src="shared/domain.js?v=20261114-87"></script>
-    <script src="shared/calculator.js?v=20261114-87"></script>
-    <script src="app.js?v=20261114-87"></script>
+    <script src="shared/domain.js?v=20261115-88"></script>
+    <script src="shared/calculator.js?v=20261115-88"></script>
+    <script src="app.js?v=20261115-88"></script>
   </body>
 </html>

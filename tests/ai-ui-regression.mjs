@@ -16,7 +16,7 @@ const helperStart = source.indexOf('function aiValue');
 const helperEnd = source.indexOf('function renderAiDraft', helperStart);
 assert.notEqual(helperStart, -1, 'AI draft normalization helpers must exist');
 assert.notEqual(helperEnd, -1, 'AI draft normalization helper boundary must remain discoverable');
-const helpers = vm.runInNewContext(`${source.slice(helperStart, helperEnd)};({ aiSettlementMode, aiCommissionStatus, aiPaymentStatus, resolveMaterialOrderMatch })`);
+const helpers = vm.runInNewContext(`${source.slice(helperStart, helperEnd)};({ aiSettlementMode, aiCommissionStatus, aiPaymentStatus, aiOrderStatus, aiInvoiceStatus, resolveMaterialOrderMatch })`);
 assert.equal(helpers.aiSettlementMode({ settlement_mode: 'guest_pay_commission' }), 'guest_pay_commission');
 assert.equal(helpers.aiSettlementMode({ commission_expected: 132.21, commission_platform: '游虾' }), 'guest_pay_commission', 'commission fields should imply guest-pay settlement');
 assert.equal(helpers.aiSettlementMode({ gmv: 1926.98, cost: 1800 }), 'agency_pay');
@@ -27,6 +27,8 @@ assert.equal(helpers.aiPaymentStatus('已收款'), 'paid');
 assert.equal(helpers.aiPaymentStatus('未付款'), 'unpaid');
 assert.equal(helpers.aiPaymentStatus('部分收款'), 'partial');
 assert.equal(helpers.aiPaymentStatus(''), 'unknown');
+assert.equal(helpers.aiOrderStatus('已确认'), 'confirmed');
+assert.equal(helpers.aiInvoiceStatus('未开票'), 'unissued');
 const existingOrders = [
   { id: 'order-platform', orderCode: 'ORD-001', type: 'hotel', platformOrderNo: 'S228007514940', confirmation: 'C-001', supplier: '厦门W酒店', serviceDate: '2026-11-10', guestNames: '谭作明', location: '厦门', upstreamName: '道旅' },
   { id: 'order-extension', orderCode: 'ORD-002', type: 'hotel', platformOrderNo: '', confirmation: 'C-001', supplier: '厦门W酒店', serviceDate: '2026-11-11', guestNames: '谭作明', location: '厦门' },
