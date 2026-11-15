@@ -415,7 +415,12 @@ function normalizeAccountingDraftFromText(draft: Record<string, unknown>, source
   setText('channel', ['订单渠道', '渠道']);
   setAmount('cost', ['成本', '成本金额']);
   setAmount('gmv', ['售价', '销售价', 'GMV']);
-  if (!order.meal_plan && /无早|不含早|无早餐/.test(String(order.product || ''))) order.meal_plan = '无早';
+  const productText = String(order.product || '').trim();
+  const mealSuffix = productText.match(/^(.*?)(无早|不含早|无早餐|含早餐|含早|单早|双早|早餐)$/);
+  if (mealSuffix?.[1]?.trim()) {
+    order.product = mealSuffix[1].trim();
+    if (!order.meal_plan) order.meal_plan = mealSuffix[2];
+  }
   if (order.channel) {
     const channel = String(order.channel).trim();
     if (/预订部|预定部|销售|同行/.test(channel)) order.channel = 'booking_desk';
