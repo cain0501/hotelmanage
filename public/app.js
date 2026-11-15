@@ -511,7 +511,7 @@ function fillFromAiDraft(){
 const fillFromAiDraftBase=fillFromAiDraft;
 fillFromAiDraft=function(){
   const data=aiDraft?.data||aiDraft||{},order=data.order||{},guestNames=aiValue(order.guest_names||order.guestNames);
-  const looksLikeMaterial=Boolean(guestNames&&(order.platform_order_no||order.check_out_date||order.guest_count||order.meal_plan));
+  const looksLikeMaterial=assistantMaterialPayload().length>0&&Boolean(guestNames&&(order.platform_order_no||order.check_out_date||order.guest_count||order.meal_plan));
   fillFromAiDraftBase();
   if(data.intent!=='order')return;
   byId('platformOrderNo').value=aiValue(order.platform_order_no);
@@ -543,13 +543,14 @@ fillFromAiDraft=function(){
 };
 const fillFromAiDraftWithExplicitLabels=fillFromAiDraft;
 fillFromAiDraft=function(){
-  fillFromAiDraftWithExplicitLabels();
   const data=aiDraft?.data||aiDraft||{},order=data.order||{};
+  fillFromAiDraftWithExplicitLabels();
   if(data.intent!=='order')return;
   const customer=aiValue(order.customer),guest=aiValue(order.guest_names||order.guestNames);
   byId('customer').value=customer||guest;
   byId('guestNames').value=guest;
   byId('guestNamesDifferent').checked=Boolean(customer&&guest&&customer!==guest);
+  byId('booker').value=aiValue(order.booker);
   byId('orderStatus').value=aiOrderStatus(order.status);
   byId('invoiceStatus').value=aiInvoiceStatus(order.invoice_status);
   syncGuestNameFields();

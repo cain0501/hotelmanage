@@ -31,6 +31,8 @@ assert.equal(helpers.aiOrderStatus('已确认'), 'confirmed');
 assert.equal(helpers.aiInvoiceStatus('未开票'), 'unissued');
 assert.match(source, /byId\('customer'\)\.value=customer\|\|guest/, 'guest-only orders should reuse guest as customer');
 assert.match(source, /guestNamesDifferent'\)\.checked=Boolean\(customer&&guest&&customer!==guest\)/, 'same customer and guest should not be marked different');
+assert.match(source, /const data=aiDraft\?\.data\|\|aiDraft\|\|\{},order=data\.order\|\|\{};\n  fillFromAiDraftWithExplicitLabels/, 'AI draft fields must be captured before clearing the draft preview');
+assert.match(source, /assistantMaterialPayload\(\)\.length>0&&Boolean\(guestNames/, 'regular text orders must not use material-only blanking rules');
 const existingOrders = [
   { id: 'order-platform', orderCode: 'ORD-001', type: 'hotel', platformOrderNo: 'S228007514940', confirmation: 'C-001', supplier: '厦门W酒店', serviceDate: '2026-11-10', guestNames: '谭作明', location: '厦门', upstreamName: '道旅' },
   { id: 'order-extension', orderCode: 'ORD-002', type: 'hotel', platformOrderNo: '', confirmation: 'C-001', supplier: '厦门W酒店', serviceDate: '2026-11-11', guestNames: '谭作明', location: '厦门' },
